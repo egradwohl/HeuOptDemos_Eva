@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 from .logdata import read_from_logfile, Log
 from matplotlib.lines import Line2D
 from dataclasses import dataclass
-
+from matplotlib import gridspec
 
 
 plt.rcParams['figure.figsize'] = (12,6)
@@ -70,14 +70,23 @@ class Draw(ABC):
                 self.problem = prob
                 self.algorithm = alg
                 self.graph = self.init_graph(instance)
+                self.log_granularity = log_granularity
 
                 # create figure
                 plt.close() # close any previously drawn figures
-                self.fig, (self.ax, self.img_ax) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [2, 1]}, 
-                        num = f'Solving {prob.value} with {alg.value}')
+                #self.fig, (self.ax, self.img_ax) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [2, 1]}, 
+                 #       num = f'Solving {prob.value} with {alg.value}')
+                #self.img_ax.axis('off')
+                #self.ax.axis('off')
+
+                gs = gridspec.GridSpec(2, 2,height_ratios=[1,7], width_ratios=[2,1] )
+                fig = plt.figure(num = f'Solving {prob.value} with {alg.value}')
+                self.descr_ax = fig.add_subplot(gs[0, :])
+                self.ax = fig.add_subplot(gs[1,0])
+                self.img_ax = fig.add_subplot(gs[1,1])
                 self.img_ax.axis('off')
                 self.ax.axis('off')
-                self.log_granularity = log_granularity
+                self.descr_ax.axis('off')
 
 
 
@@ -131,11 +140,13 @@ class Draw(ABC):
                         if self.algorithm == Algorithm.GRASP:
                                 phase = 'Randomized Greedy Construction + Local Search'
 
-
-                self.ax.text(0,1, '\n'.join((
+                
+                self.descr_ax.clear()
+                self.descr_ax.axis('off')
+                self.descr_ax.text(0,1, '\n'.join((
                 '%s: %s' % (phase, self.plot_description['comment'] ),
                 'Best Objective: %d' % (data.get('best',self.plot_description['best']), ),
-                'Current Objective: %d' % (data.get('obj',self.plot_description['obj']),))), horizontalalignment='left', verticalalignment='top', transform=self.ax.transAxes)
+                'Current Objective: %d' % (data.get('obj',self.plot_description['obj']),))), horizontalalignment='left', verticalalignment='top')#, transform=self.ax.transAxes)
 
 
                 self.plot_description.update({'phase': '', 'comment': [], 'best':0, 'obj':0}) #reset description
@@ -201,26 +212,28 @@ class MISPDraw(Draw):
 
         def create_comment(self, option: Option, status: str, params: CommentParameters):
                 # TODO create comments according to log granularity
-                return self.comments[option][status](params)
-                '''
-                if self.log_granularity == Log.StepInter:
+                #return self.comments[option][status](params)
+
+                if self.log_granularity == Log.StepInter or option == Option.CH:
                         return self.comments[option][status](params)
-                if (self.log_granularity == Log.StepNoInter and  option != Option.CH) or self.log_granularity == Log.NewInc:
-                        option = self.comments[option]
-                        return ','.join([option['start'](params),
+                if (self.log_granularity == Log.StepNoInter and  option != Option.CH) or self.log_granularity == Log.NewInc or self.log_granularity == Log.Update:
+                        comment = self.comments[option]
+                        if option == Option.RGC and not status in ['start', 'end']:
+                                return ', '.join([comment.get('cl','')(params),  '\n' + comment.get('rcl','')(params), comment.get('sel','')(params)])
+                        return ', '.join([comment['start'](params),
                                 #option.get('cl','')(params), option.get('rcl','')(params), option.get('sel','')(params),
-                                option['end'](params)])
-                if self.log_granularity == Log.Update:
-                        start = self.comments[option]['start'](params) if option != Option.LI else f'remove {len(params.remove)} node(s), add {len(params.add)} node(s)'
-                        option = self.comments[option]
-                        return ','.join([start,
-                                option['end'](params)])
+                                comment['end'](params)])
+                #if self.log_granularity == Log.Update:
+                 #       start = self.comments[option]['start'](params) if option != Option.LI else f'remove {len(params.remove)} node(s), add {len(params.add)} node(s)'
+                 #       option = self.comments[option]
+                 #       return ','.join([start,
+                 #               option['end'](params)])
                 if self.log_granularity == Log.Cycle:
-                        if self.algorithm == Algorithm.GVNS:
-                                return self.comments[option]['end'](params)
-                        else:
-                                return self.comments[option]['end'](params)
-                '''
+                        comment = self.comments[option]
+                        return ', '.join([comment['start'](params),
+                                #option.get('cl','')(params), option.get('rcl','')(params), option.get('sel','')(params),
+                                comment['end'](params)])
+                
 
 
 

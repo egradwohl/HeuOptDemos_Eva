@@ -43,7 +43,7 @@ class Parameters():
     Attributes
         - name: name of the option which is also the name in the jupyter widget
         - callback: function callback that will be used for this option
-        - param_type: type of parameter used in the callback
+        - param_type: type of parameter used in the callback e.g. float, int
         - value: value of parameter used in callback, if provided it represents a fixed value, otherwise it will be set in the widgets
     """
 
