@@ -27,12 +27,16 @@ pc_dir = 'pseudocode'
 
 @dataclass
 class CommentParameters:
+        opt: Option = Option.LI
+        status: str = 'start'
         n: int = 0
         m: int = 0
         par: int = 0
         gain = 0
         better: bool = False
         no_change: bool = False
+        best = 0
+        obj = 0
 
         # algorithm specific parameters
         remove: set = None
@@ -49,14 +53,15 @@ class Draw(ABC):
 
 
 
-        phases = {'ch':'Construction', 'li': 'Local Search', 'sh': 'Shaking', 'rgc': 'Randomized Greedy Construction', 
-                        'cl':'Candidate List', 'rcl': 'Restricted Candidate List', 'sel':'Selection from RCL'}
+        phases = {Option.CH:Option.CH.value, Option.LI: Option.LI.value, Option.SH: Option.SH.value,
+                 Option.RGC: Option.RGC.value, Option.TL: Option.LI.value}
 
         plot_description = {'phase': '',
                                 'comment': [],
                                 'best': 0,
                                 'obj': 0,
                                 }
+        comments = {}
         grey = str(210/255) #'lightgrey'
         darkgrey = str(125/255)
         white = 'white'
@@ -96,7 +101,7 @@ class Draw(ABC):
 
         def get_animation(self, i: int, log_data: list):
                 self.reset_graph()
-                comment = None
+                comment = CommentParameters()
                 if self.algorithm == Algorithm.TS:
                         comment = self.get_ts_animation(i,log_data)
                 if self.algorithm == Algorithm.GVNS:
@@ -104,9 +109,9 @@ class Draw(ABC):
                 if self.algorithm == Algorithm.GRASP:
                         comment = self.get_grasp_animation(i,log_data)
 
-                self.add_description(i, log_data)
+                self.add_description(i, comment)
                 self.add_legend()
-                self.load_pc_img(log_data[i], comment)
+                self.load_pc_img(comment)
 
 
         @abstractmethod
@@ -122,34 +127,37 @@ class Draw(ABC):
         def get_ts_animation(self, i:int, log_data:list):
                 pass
 
-        def add_description(self, i, log_info: list):
-                data = log_info[i]
-
-                if data.get('status') == 'start' and i == 0:
-                        data['best'] = 0
-                        data['obj'] = 0
-                        self.plot_description['phase'] = f'{self.problem.value} Instance'
+        def add_description(self, i, comment: CommentParameters):
+                #data = log_info[i]
+                phase = ''
+                if comment.status == 'start' and i == 0:
+                        phase = f'{self.problem.value} Instance'
+                        #data['best'] = 0
+                        #data['obj'] = 0
+                        #self.plot_description['phase'] = f'{self.problem.value} Instance'
                 else:
-                        self.plot_description['phase'] = self.phases.get(data.get('m',''),'')
+                        #self.plot_description['phase'] = self.phases.get(data.get('m',''),'')
+                        phase = comment.opt.value if comment.opt != Option.TL else Option.LI.value
 
-                phase = self.plot_description['phase']
+                #phase = self.plot_description['phase']
                 
-                if self.log_granularity == Log.Cycle and not data.get('m','').startswith('ch'):
+                if self.log_granularity == Log.Cycle and comment.opt != Option.CH:
                         if self.algorithm == Algorithm.GVNS:
-                                phase = 'Shaking + Local Search'
+                                phase = Option.SH.value + '+' + Option.LI.value
                         if self.algorithm == Algorithm.GRASP:
-                                phase = 'Randomized Greedy Construction + Local Search'
+                                phase = Option.RGC.value + '+' + Option.LI.value
 
-                
+                text = '\n'.join(
+                        ['%s: %s' % (phase, self.create_comment(comment)),
+                        'Best Objective: %d' % (comment.best, ),
+                        'Current Objective: %d' % (comment.obj, )]
+                        )
                 self.descr_ax.clear()
                 self.descr_ax.axis('off')
-                self.descr_ax.text(0,1, '\n'.join((
-                '%s: %s' % (phase, self.plot_description['comment'] ),
-                'Best Objective: %d' % (data.get('best',self.plot_description['best']), ),
-                'Current Objective: %d' % (data.get('obj',self.plot_description['obj']),))), horizontalalignment='left', verticalalignment='top')#, transform=self.ax.transAxes)
+                self.descr_ax.text(0,1, text, horizontalalignment='left', verticalalignment='top')#, transform=self.ax.transAxes)
 
 
-                self.plot_description.update({'phase': '', 'comment': [], 'best':0, 'obj':0}) #reset description
+                #self.plot_description.update({'phase': '', 'comment': [], 'best':0, 'obj':0}) #reset description
 
 
         @abstractmethod
@@ -164,15 +172,15 @@ class Draw(ABC):
                 return pc_imgs
 
 
-        def load_pc_img(self, log_info: dict, comment: CommentParameters):
+        def load_pc_img(self, comment: CommentParameters):
                 # TODO: load correct image according to current step
                 #level = self.log_granularity.name.lower()
                 level = Log.StepInter.name.lower()
-                m = log_info.get('m','')
-                status = log_info.get('status','') if not log_info.get('end',False) else 'enditer'
-                better = 'better' if m == 'li' and not comment.no_change else ''
-                better = better if m == 'li' and status == 'end' else ''
-                path = lambda level,m,status,better: f'{level}{"_" + m if m != "" else ""}{"_" + status}{"_" + better if better != "" else ""}'
+                m = comment.opt if comment.opt != Option.TL else Option.LI
+                status = comment.status #if not log_info.get('end',False) else 'enditer'
+                better = 'better' if m == Option.LI and not comment.no_change else ''
+                better = better if m == Option.LI and status == 'end' else ''
+                path = lambda level,m,status,better: f'{level}{"_" + m.name.lower()}{"_" + status}{"_" + better if better != "" else ""}'
                 #img_path = (os.path.sep).join( [pc_dir, self.algorithm.name.lower(), path(level,m,status,better) + '.PNG'] )
                 #img = mpimg.imread(img_path)
                 img = self.pc_imgs[path(level,m,status,better) + '.PNG']
@@ -187,8 +195,9 @@ class Draw(ABC):
         def draw_graph(self):
                 pass
 
-        def create_comment(self, option: Option, status: str, params: CommentParameters):
-
+        def create_comment(self, params: CommentParameters):
+                option = params.opt
+                status = params.status
                 if self.log_granularity == Log.StepInter or option == Option.CH:
                         return self.comments[option][status](params)
                         
@@ -208,7 +217,7 @@ class MISPDraw(Draw):
         comments = {
                         Option.CH:{
                                 'start': lambda params: f'{params.n} nodes, {params.m} edges',
-                                'end': lambda params: f'initial solution={InitSolution(params.par).name}'
+                                'end': lambda params: f'construction={InitSolution(params.par).name}'
                         },
                         Option.LI: {
                                 'start': lambda params: f'k={params.par}, remove {len(params.remove)} node(s), add {len(params.add)} node(s)',
@@ -270,13 +279,15 @@ class MISPDraw(Draw):
 
         def get_gvns_animation(self, i:int, log_data: list):
                 data = log_data[i]
-                status = data.get('status','start')
+                #status = data.get('status','start')
                 comment_params = CommentParameters()
+
                 done = self.get_gvns_and_ts_animation(i,log_data,comment_params)
                 if done:
                         return comment_params
 
-                self.plot_description['comment'] = self.create_comment(Option[data.get('m','li').upper()],status,comment_params)
+                #self.plot_description['comment'] = self.create_comment(Option[data.get('m','li').upper()],status,comment_params)
+                comment_params.opt = Option[data.get('m','li').upper()]
                 self.draw_graph(data['inc'])
                 return comment_params
 
@@ -285,12 +296,14 @@ class MISPDraw(Draw):
                 data = log_data[i]
                 status = data.get('status','')
                 sol = data.get('sol',[])
-
+                comment_params.status = status
                 if status == 'start' and (data.get('m') == 'ch' or i==0):
                         comment_params.n = len(self.graph.nodes())
                         comment_params.m = len(self.graph.edges())
-                        self.plot_description['comment'] = self.create_comment(Option.CH,status,comment_params)
-                        log_data[i]['best'] = log_data[i]['obj'] = 0
+                        #self.plot_description['comment'] = self.create_comment(Option.CH,status,comment_params)
+                        #log_data[i]['best'] = log_data[i]['obj'] = 0
+                        comment_params.opt = Option.CH
+                        comment_params.best = comment_params.obj = 0
                         self.draw_graph()
                         return True
                 #set color of nodes and edges
@@ -309,6 +322,8 @@ class MISPDraw(Draw):
                 comment_params.gain = data["obj"] - log_data[i-1]["obj"]
                 comment_params.no_change = not (add or remove)
                 comment_params.better = data.get('better',False) or (log_data[i-1].get('best',0)< data.get('best',0))
+                comment_params.best = data['best']
+                comment_params.obj = data['obj']
                 return False
 
 
@@ -327,9 +342,10 @@ class MISPDraw(Draw):
                         comment = self.get_gvns_animation(i,log_data)
                         return comment
 
-                comment_params = CommentParameters()
                 data = log_data[i] 
-                status = data.get('status','')
+                comment_params = CommentParameters()
+                comment_params.status = data.get('status','')
+                comment_params.opt = Option.RGC
                 par = data.get('par',1)
                 mn = min(data.get('cl',{0:0}).values())
                 mx = max(data.get('cl',{0:0}).values())
@@ -339,11 +355,13 @@ class MISPDraw(Draw):
                         comment_params.alpha = par
                         comment_params.thres = round(mn + par * (mx-mn),2)
 
-                if status == 'start' or status == 'end':
+                if comment_params.status in ['start','end']:
                         comment_params.better = data.get('better',False)
-                        self.plot_description['comment'] = self.create_comment(Option.RGC,status,comment_params)
-                        nx.set_node_attributes(self.graph, {n:self.yellow if data.get('better',False) else self.blue for n in data.get('sol') if status == 'end'}, name='color')
-                        self.draw_graph(data.get('inc') if status == 'end' else [])
+                        comment_params.best = data.get('best',0)
+                        comment_params.obj = data.get('obj',0)
+                        #self.plot_description['comment'] = self.create_comment(Option.RGC,status,comment_params)
+                        nx.set_node_attributes(self.graph, {n:self.yellow if data.get('better',False) else self.blue for n in data.get('sol') if comment_params.status == 'end'}, name='color')
+                        self.draw_graph(data.get('inc') if comment_params.status == 'end' else [])
                         return comment_params
 
                 nx.set_node_attributes(self.graph, data.get('cl',{}), 'label')
@@ -359,16 +377,19 @@ class MISPDraw(Draw):
                 while not (log_data[j]['status'] in ['start','end']):
                         j -= 1
 
-                self.plot_description.update({'best': log_data[j]['best'], 'obj':len(data.get('sol'))})
-                self.plot_description['comment'] = self.create_comment(Option.RGC,status,comment_params)
+                #self.plot_description.update({'best': log_data[j]['best'], 'obj':len(data.get('sol'))})
+                comment_params.best = log_data[j].get('best',0)
+                comment_params.obj = len(data.get('sol',[]))
+                #self.plot_description['comment'] = self.create_comment(Option.RGC,status,comment_params)
                 self.draw_graph(data.get('rcl',[]), sel_color='black')
                 return comment_params
 
         def get_ts_animation(self, i:int, log_data: list):
 
                 data = log_data[i]
-                status = data.get('status','')
                 comment_params = CommentParameters()
+                comment_params.status = data.get('status','')
+
                 done = self.get_gvns_and_ts_animation(i,log_data,comment_params)
                 if done:
                         return comment_params
@@ -379,13 +400,13 @@ class MISPDraw(Draw):
                         tabu_nodes = list(ta[0])
                         life = ta[1]
                         nx.set_node_attributes(self.graph, {n: {'label':life,'tabu':True} for n in tabu_nodes})
-                        if data.get('status','') == 'start' and set(tabu_nodes).issubset(comment_params.add):
+                        if comment_params.status == 'start' and set(tabu_nodes).issubset(comment_params.add):
                                 asp_nodes = asp_nodes.union(set(tabu_nodes).intersection(comment_params.add))
 
                 comment_params.asp = len(asp_nodes) > 0
                 comment_params.ll = data.get('ll',0)
-
-                self.plot_description['comment'] = self.create_comment(Option.CH if data.get('m').startswith('ch') else Option.TL,status,comment_params)
+                comment_params.opt = Option.CH if data.get('m').startswith('ch') else Option.TL
+                #self.plot_description['comment'] = self.create_comment(Option.CH if data.get('m').startswith('ch') else Option.TL,status,comment_params)
                 self.draw_graph(data.get('inc',[]))
                 return comment_params
 
