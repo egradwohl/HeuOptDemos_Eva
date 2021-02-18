@@ -60,8 +60,8 @@ class Draw(ABC):
         grey = str(210/255) #'lightgrey'
         darkgrey = str(125/255)
         white = 'white'
-        blue = 'royalblue'
-        red = 'tomato'
+        blue = 'royalblue' #(128/255,128/255,255/255)#'royalblue'
+        red = 'tomato'#(255/255,99/255,71/255)#'tomato'
         green = 'limegreen'
         yellow = 'gold'
         orange = 'darkorange'
@@ -71,7 +71,7 @@ class Draw(ABC):
                 self.algorithm = alg
                 self.graph = self.init_graph(instance)
                 self.log_granularity = log_granularity
-
+                self.pc_imgs = self.load_pc_img_files()
                 # create figure
                 plt.close() # close any previously drawn figures
                 #self.fig, (self.ax, self.img_ax) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [2, 1]}, 
@@ -79,7 +79,7 @@ class Draw(ABC):
                 #self.img_ax.axis('off')
                 #self.ax.axis('off')
 
-                gs = gridspec.GridSpec(2, 2,height_ratios=[1,7], width_ratios=[2,1] )
+                gs = gridspec.GridSpec(2, 2,height_ratios=[1,8], width_ratios=[2,1] )
                 fig = plt.figure(num = f'Solving {prob.value} with {alg.value}')
                 self.descr_ax = fig.add_subplot(gs[0, :])
                 self.ax = fig.add_subplot(gs[1,0])
@@ -156,6 +156,14 @@ class Draw(ABC):
         def add_legend(self):
                 pass
 
+        def load_pc_img_files(self):
+                filenames = os.listdir(pc_dir + os.path.sep + self.algorithm.name.lower())
+                pc_imgs = dict()
+                for f in filenames:
+                        pc_imgs[f] = mpimg.imread(pc_dir + os.path.sep + self.algorithm.name.lower() + os.path.sep + f)
+                return pc_imgs
+
+
         def load_pc_img(self, log_info: dict, comment: CommentParameters):
                 # TODO: load correct image according to current step
                 #level = self.log_granularity.name.lower()
@@ -165,8 +173,9 @@ class Draw(ABC):
                 better = 'better' if m == 'li' and not comment.no_change else ''
                 better = better if m == 'li' and status == 'end' else ''
                 path = lambda level,m,status,better: f'{level}{"_" + m if m != "" else ""}{"_" + status}{"_" + better if better != "" else ""}'
-                img_path = (os.path.sep).join( [pc_dir, self.algorithm.name.lower(), path(level,m,status,better) + '.PNG'] )
-                img = mpimg.imread(img_path)
+                #img_path = (os.path.sep).join( [pc_dir, self.algorithm.name.lower(), path(level,m,status,better) + '.PNG'] )
+                #img = mpimg.imread(img_path)
+                img = self.pc_imgs[path(level,m,status,better) + '.PNG']
                 self.img_ax.set_aspect('equal', anchor='E')
                 self.img_ax.imshow(img)#,extent=[0, 1, 0, 1])
 
@@ -174,11 +183,24 @@ class Draw(ABC):
         def reset_graph(self):
                 pass
         @abstractmethod
+
         def draw_graph(self):
                 pass
 
+        def create_comment(self, option: Option, status: str, params: CommentParameters):
 
+                if self.log_granularity == Log.StepInter or option == Option.CH:
+                        return self.comments[option][status](params)
+                        
+                if self.log_granularity == Log.StepNoInter or self.log_granularity == Log.NewInc:
+                        comment = self.comments[option]
+                        if option == Option.RGC and not status in ['start', 'end']:
+                                return ', '.join([comment.get('cl','')(params),  '\n' + comment.get('rcl','')(params), comment.get('sel','')(params)])
+                        return ', '.join([comment['start'](params), comment['end'](params)])
 
+                if self.log_granularity == Log.Update or self.log_granularity == Log.Cycle:
+                        comment = self.comments[option]
+                        return comment['cycle_start'](params) + comment['end'](params)
 
 
 class MISPDraw(Draw):
@@ -190,49 +212,32 @@ class MISPDraw(Draw):
                         },
                         Option.LI: {
                                 'start': lambda params: f'k={params.par}, remove {len(params.remove)} node(s), add {len(params.add)} node(s)',
-                                'end': lambda params: f'objective gain={params.gain}{", no improvement - reached local optimum" if params.no_change else ""}{", found new best solution" if params.better else ""}'
+                                'end': lambda params: f'objective gain={params.gain}{", no improvement - reached local optimum" if params.no_change else ""}{", found new best solution" if params.better else ""}',
+                                'cycle_start': lambda params: f'remove {len(params.remove)} node(s), add {len(params.add)} node(s)\n'
                         },
                         Option.SH: {
                                 'start': lambda params: f'k={params.par}, remove {len(params.remove)} node(s), add {len(params.add)} node(s)',
-                                'end': lambda params: f'objective gain={params.gain}{", found new best solution" if params.better else ""}'
+                                'end': lambda params: f'objective gain={params.gain}{", found new best solution" if params.better else ""}',
+                                'cycle_start': lambda params: f'k={params.par}, remove {len(params.remove)} node(s), add {len(params.add)} node(s)\n'
                         },
                         Option.RGC:{
                                 'start': lambda params: 'start with empty solution',
                                 'end': lambda params: f'created complete solution{", found new best solution" if params.better else ""}',
                                 'cl': lambda params: 'candidate list=remaining degree (number of unblocked neigbors)',
                                 'rcl': lambda params: f'restricted candidate list=' + (f'{params.k}-best' if params.k else f'alpha: {params.alpha}, threshold: {params.thres}'),
-                                'sel': lambda params: f'selection=random, objective gain={params.gain}'
+                                'sel': lambda params: f'selection=random, objective gain={params.gain}',
+                                'cycle_start': lambda params: f'restricted candidate list=' + (f'{params.k}-best' if params.k else f'alpha: {params.alpha}\n')
                         },
                         Option.TL:{
-                                'start': lambda params: f'k={params.par} remove {len(params.remove)} node(s), add {len(params.add)} node(s){", apply aspiration criterion" if params.asp else ""}',
-                                'end': lambda params: f'size of tabu list={params.ll}, objective gain={params.gain}{", all possible exchanges are tabu" if params.no_change else ""}{", found new best solution" if params.better else ""}'
+                                'start': lambda params: f'k={params.par}, remove {len(params.remove)} node(s), add {len(params.add)} node(s){", apply aspiration criterion" if params.asp else ""}',
+                                'end': lambda params: f'size of tabu list={params.ll}, objective gain={params.gain}{", all possible exchanges are tabu" if params.no_change else ""}{", found new best solution" if params.better else ""}',
+                                'cycle_start': lambda params: f'k={params.par}, remove {len(params.remove)} node(s), add {len(params.add)} node(s){", apply aspiration criterion" if params.asp else ""}\n'
+                               
                         }
                         
                         }
 
-        def create_comment(self, option: Option, status: str, params: CommentParameters):
-                # TODO create comments according to log granularity
-                #return self.comments[option][status](params)
 
-                if self.log_granularity == Log.StepInter or option == Option.CH:
-                        return self.comments[option][status](params)
-                if (self.log_granularity == Log.StepNoInter and  option != Option.CH) or self.log_granularity == Log.NewInc or self.log_granularity == Log.Update:
-                        comment = self.comments[option]
-                        if option == Option.RGC and not status in ['start', 'end']:
-                                return ', '.join([comment.get('cl','')(params),  '\n' + comment.get('rcl','')(params), comment.get('sel','')(params)])
-                        return ', '.join([comment['start'](params),
-                                #option.get('cl','')(params), option.get('rcl','')(params), option.get('sel','')(params),
-                                comment['end'](params)])
-                #if self.log_granularity == Log.Update:
-                 #       start = self.comments[option]['start'](params) if option != Option.LI else f'remove {len(params.remove)} node(s), add {len(params.add)} node(s)'
-                 #       option = self.comments[option]
-                 #       return ','.join([start,
-                 #               option['end'](params)])
-                if self.log_granularity == Log.Cycle:
-                        comment = self.comments[option]
-                        return ', '.join([comment['start'](params),
-                                #option.get('cl','')(params), option.get('rcl','')(params), option.get('sel','')(params),
-                                comment['end'](params)])
                 
 
 
@@ -303,7 +308,7 @@ class MISPDraw(Draw):
                 comment_params.par = data.get('par',1)
                 comment_params.gain = data["obj"] - log_data[i-1]["obj"]
                 comment_params.no_change = not (add or remove)
-                comment_params.better = data.get('better',False)
+                comment_params.better = data.get('better',False) or (log_data[i-1].get('best',0)< data.get('best',0))
                 return False
 
 
@@ -325,6 +330,14 @@ class MISPDraw(Draw):
                 comment_params = CommentParameters()
                 data = log_data[i] 
                 status = data.get('status','')
+                par = data.get('par',1)
+                mn = min(data.get('cl',{0:0}).values())
+                mx = max(data.get('cl',{0:0}).values())
+                if type(par) == int:
+                        comment_params.k = par
+                else:
+                        comment_params.alpha = par
+                        comment_params.thres = round(mn + par * (mx-mn),2)
 
                 if status == 'start' or status == 'end':
                         comment_params.better = data.get('better',False)
@@ -340,14 +353,6 @@ class MISPDraw(Draw):
                 nx.set_node_attributes(self.graph, {n:self.orange for n in n_unsel},'color')
                 nx.set_edge_attributes(self.graph, {(data.get('sel',n),n):'black' for n in n_unsel}, 'color')
 
-                par = data.get('par',1)
-                mn = min(data.get('cl').values())
-                mx = max(data.get('cl').values())
-                if type(par) == int:
-                        comment_params.k = par
-                else:
-                        comment_params.alpha = par
-                        comment_params.thres = round(mn + par * (mx-mn),2)
                 comment_params.gain = 1
 
                 j = i
@@ -438,7 +443,7 @@ class MISPDraw(Draw):
 
         def draw_graph(self, pos_change: list() = [], sel_color='gold'):
                 self.ax.clear()
-                self.ax.set_ylim(bottom=-1.5,top=1.3)
+                self.ax.set_ylim(bottom=-1.5,top=1.1)
                 self.ax.set_xlim(left=-1.1,right=1.1)
                 for pos in ['right', 'top', 'bottom', 'left']: 
                         self.ax.spines[pos].set_visible(False) 
@@ -481,29 +486,30 @@ class MAXSATDraw(Draw):
                 },
                 Option.LI: {
                         'start': lambda params: f'k={params.par}, flipping {len(params.flip)} variable(s)',
-                        'end': lambda params: f'objective gain={params.gain}{", no improvement - reached local optimum" if params.no_change else ""}{", found new best solution" if params.better else ""}'
+                        'end': lambda params: f'objective gain={params.gain}{", no improvement - reached local optimum" if params.no_change else ""}{", found new best solution" if params.better else ""}',
+                        'cycle_start': lambda params: f'flipping {len(params.flip)} variable(s)\n'
                 },
                 Option.SH: {
                         'start': lambda params: f'k={params.par}, flipping {len(params.flip)} variable(s)',
-                        'end': lambda params: f'objective gain={params.gain}{", found new best solution" if params.better else ""}'
+                        'end': lambda params: f'objective gain={params.gain}{", found new best solution" if params.better else ""}',
+                        'start': lambda params: f'k={params.par}, flipping {len(params.flip)} variable(s)'
                 },
                 Option.RGC:{
                         'start': lambda params: 'start with empty solution',
                         'end': lambda params: f'created complete solution{", found new best solution" if params.better else ""}',
                         'cl': lambda params: 'candidate list=number of additionally fulfilled clauses',
                         'rcl': lambda params: f'restricted candidate list=' + (f'{params.k}-best' if params.k else f'alpha: {params.alpha}, threshold: {params.thres}'),
-                        'sel': lambda params: f'selection=random, objective gain={params.gain}'
+                        'sel': lambda params: f'selection=random, objective gain={params.gain}',
+                        'cycle_start': lambda params: f'restricted candidate list=' + (f'{params.k}-best' if params.k else f'alpha: {params.alpha}\n')
                 },
                 Option.TL:{
                         'start': lambda params: f'k={params.par} flipping {len(params.flip)} variable(s){", apply aspiration criterion" if params.asp else ""}',
-                        'end': lambda params: f'size of tabu list={params.ll}, objective gain={params.gain}{", all possible flips are tabu" if params.no_change else ""}{", found new best solution" if params.better else ""}'
+                        'end': lambda params: f'size of tabu list={params.ll}, objective gain={params.gain}{", all possible flips are tabu" if params.no_change else ""}{", found new best solution" if params.better else ""}',
+                        'cycle_start': lambda params: f'k={params.par}, flipping {len(params.flip)} variable(s){", apply aspiration criterion" if params.asp else ""}\n'
+                       
                 }
                 }
 
-        def create_comment(self, option: Option, status: str, params: CommentParameters):
-                # TODO create comments according to log granularity
-
-                return self.comments[option][status](params)
 
         def __init__(self, prob: Problem, alg: Algorithm, instance, log_granularity: Log):
                 super().__init__(prob,alg,instance,log_granularity)
@@ -595,7 +601,7 @@ class MAXSATDraw(Draw):
                 comment_params.remove = removed
                 comment_params.par = data.get('par',1)
                 comment_params.gain = data["obj"] - log_data[i-1]["obj"]
-                comment_params.better = data.get('better',False)
+                comment_params.better = data.get('better',False) or (log_data[i-1].get('best',0) < data.get('best',0))
                 comment_params.no_change = len(flipped_nodes) == 0
 
                 return False, pos_literals
@@ -675,9 +681,18 @@ class MAXSATDraw(Draw):
                 clauses = [i for i,t in self.graph.nodes(data='type') if t=='clause']
                 data = log_data[i]
                 status = data.get('status','')
-                #comment = self.comments[Option.RGC][status]
+
                 comment_params = CommentParameters()
                 comment_params.better = data.get('better',False)
+                mx = max(data.get('cl',{0:0}).values())
+                mn = min(data.get('cl',{0:0}).values())
+                par = data.get('par', 0)
+                if type(par) == int:
+                        comment_params.k = par
+                else:
+                        comment_params.alpha = par
+                        comment_params.thres = round(mx - par * (mx-mn),2)
+
                 if status == 'end':
                         self.plot_description['comment'] = self.create_comment(Option.RGC,status,comment_params)
                         nx.set_node_attributes(self.graph, {k: self.red if data['inc'][self.graph.nodes[k]['nr']-1] == 0 else self.blue for k in incumbent}, name='color')
@@ -717,14 +732,7 @@ class MAXSATDraw(Draw):
                 nx.set_edge_attributes(self.graph, {edge: 'black' for edge in self.graph.edges() if abs(sel) in edge}, 'color')
                 
 
-                mx = max(data['cl'].values())
-                mn = min(data['cl'].values())
-                par = data.get('par', 0)
-                if type(par) == int:
-                        comment_params.k = par
-                else:
-                        comment_params.alpha = par
-                        comment_params.thres = round(mx - par * (mx-mn),2)
+
                 comment_params.gain = len(added)
 
                 j = i
@@ -762,7 +770,7 @@ class MAXSATDraw(Draw):
                         life = ta[1]
                         nodes = [n for n,t in self.graph.nodes(data='type') if t=='variable' and self.graph.nodes[n]['nr'] in tabu_var]
                         nx.set_node_attributes(self.graph, {n: {'tabu':True,'label':str(life)} for n in nodes})
-                        if set(nodes).issubset(set(flipped_nodes)):
+                        if data.get('status','') == 'start' and set(nodes).issubset(set(flipped_nodes)):
                                 asp = True
                 
                 comment_params.asp = asp
@@ -830,7 +838,7 @@ class MAXSATDraw(Draw):
 
         def draw_graph(self, pos_change):
                 self.ax.clear()
-                self.ax.set_ylim(bottom=-1,top=1.2)
+                self.ax.set_ylim(bottom=-1,top=1.0)
                 self.ax.set_xlim(left=-1,right=1)
                 for pos in ['right', 'top', 'bottom', 'left']: 
                         self.ax.spines[pos].set_visible(False) 
