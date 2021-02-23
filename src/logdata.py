@@ -32,16 +32,10 @@ sum_log_path = "logs" + os.path.sep + "summary.log"
 
 class LogData():
 
-    phases = {
-                Algorithm.GVNS: ('ch', 'li', ['sh', 'li']),
-                Algorithm.GRASP: (['rgc', 'li']),
-                Algorithm.TS: ('ch', ['li'])
-    }
-
     def __init__(self, problem: Problem, algorithm: Algorithm, log_data: list):
         self.problem = problem
         self.algorithm = algorithm
-        self.full_data = [log_data[0]] + log_data #prepend additional frame for displaying instance in the beginning
+        self.full_data = [{'status':'init', 'algorithm': self.algorithm, 'problem': self.problem}] + log_data #prepend additional frame for displaying instance in the beginning
         self.levels = self.init_levels()
         self.current_level = Log.StepInter
         self.log_data = self.full_data # holds logdata for currently active log level
@@ -50,22 +44,31 @@ class LogData():
         # for each level the relevant indices are stored
         levels = dict()
         levels[Log.StepInter] = list(range(len(self.full_data)))
-        levels[Log.StepNoInter] = [0] +[i for i in levels[Log.StepInter] if not self.full_data[i].get('status') in  ['start','cl','rcl']]
+        levels[Log.StepNoInter] = [0] +[i for i in levels[Log.StepInter] if self.full_data[i].get('status', '') in  ['end', 'sel']]
         levels[Log.NewInc] =[0] + [i for i in levels[Log.StepNoInter] if self.full_data[i].get('better',False)]
         update = list()
+        if self.algorithm == Algorithm.TS:
+            update = [i for i in levels[Log.StepNoInter]]
+        if self.algorithm == Algorithm.GRASP or self.algorithm == Algorithm.GVNS:
+            for i,j in enumerate(levels[Log.StepNoInter][:-1]):
+                if self.full_data[j].get('m','') != self.full_data[levels[Log.StepNoInter][i+1]].get('m',''):
+                    update.append(j)
+            update.append(levels[Log.StepNoInter][-1])
 
-        update = [i for i in levels[Log.StepNoInter][:-1] if i==0 or (self.full_data[i].get('m','') != 'li' and self.full_data[i].get('status','') == 'end') or 
-                    (self.full_data[i].get('m','') == 'li' and self.full_data[i+1].get('m','') != 'li') or
-                    len({'rgc','sh'}.intersection({data.get('m','') for data in self.full_data})) == 0 ]
 
-        update.append(levels[Log.StepNoInter][-1])
+
+        #update = [i for i in levels[Log.StepNoInter][:-1] if i==0 or (self.full_data[i].get('m','') != 'li' and self.full_data[i].get('status','') == 'end') or 
+         #           (self.full_data[i].get('m','') == 'li' and self.full_data[i+1].get('m','') != 'li') or
+        #           len({'rgc','sh'}.intersection({data.get('m','') for data in self.full_data})) == 0 ]
+
+        #update.append(levels[Log.StepNoInter][-1])
 
         levels[Log.Update] = update
-        levels[Log.Cycle] =[ i for i in levels[Log.Update] if self.full_data[i].get('m') in ['ch', 'li'] ]
+        levels[Log.Cycle] =[ i for i in levels[Log.Update] if self.full_data[i].get('m','') in ['ch', 'li'] or i== 0]
+        for i in levels[Log.Cycle][1:]:
+            self.full_data[i]['end_iter'] = True
 
         return levels
-
-
 
 
     def change_granularity(self, i: int, granularity: Log):
