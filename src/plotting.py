@@ -149,13 +149,15 @@ class Draw(ABC):
 
         def load_pc_img(self, comment: CommentParameters):
                 # TODO: load correct image according to current step
-                #level = self.log_granularity.name.lower()
                 level = Log.StepInter.name.lower()
+                #if self.algorithm == Algorithm.GVNS:
+                 #       level = self.log_granularity.name.lower()
                 m = comment.opt if comment.opt != Option.TL else Option.LI
                 status = comment.status #if not log_info.get('end',False) else 'enditer'
                 better = 'better' if m == Option.LI and not comment.no_change else ''
                 better = better if m == Option.LI and status == 'end' else ''
                 path = lambda level,m,status,better: f'{level}{"_" + m.name.lower()}{"_" + status}{"_" + better if better != "" else ""}'
+                #print(path(level,m,status,better) + '.PNG')
                 img = self.pc_imgs[path(level,m,status,better) + '.PNG']
                 self.img_ax.set_aspect('equal', anchor='E')
                 self.img_ax.imshow(img)#,extent=[0, 1, 0, 1])
@@ -470,7 +472,7 @@ class MAXSATDraw(Draw):
                 Option.SH: {
                         'start': lambda params: f'k={params.par}, flipping {len(params.flip)} variable(s)',
                         'end': lambda params: f'objective gain={params.gain}{", found new best solution" if params.better else ""}',
-                        'cycle_start': lambda params: f'k={params.par}, flipping {len(params.flip)} variable(s)'
+                        'cycle_start': lambda params: f'k={params.par}, flipping {len(params.flip)} variable(s)\n'
                 },
                 Option.RGC:{
                         'start': lambda params: 'start with empty solution',
@@ -860,8 +862,9 @@ class MAXSATDraw(Draw):
         def add_sol_description(self, i, data: dict):
                 inc_pos = [pos for n,pos in nx.get_node_attributes(self.graph, 'pos').items() if self.graph.nodes[n]['type'] == 'incumbent'][0]
                 curr_pos = [pos for n,pos in nx.get_node_attributes(self.graph, 'pos').items() if self.graph.nodes[n]['type'] == 'variable'][0]
-                self.ax.text(-1,inc_pos[1], 'best' if i > 0 and data.get('status','') in ['start','end']  else '')
-                self.ax.text(-1,curr_pos[1], 'current')
+                best = data.get('status','') == 'end' or (data.get('status','') == 'start' and not data.get('m','').startswith('rgc'))
+                self.ax.text(-1,inc_pos[1], 'best' if i > 0 and best else '')
+                self.ax.text(-1,curr_pos[1], 'current' if i > 0 else '')
 
 
 

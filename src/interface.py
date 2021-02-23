@@ -78,7 +78,7 @@ class InterfaceVisualisation():
                 seed = widgets.IntText(description='seed', value=0)
                 iterations = widgets.IntText(description='iterations', value=100)
                 runs = widgets.IntText(description='runs',value=1,layout=widgets.Layout(display='None'))
-                use_runs = widgets.Checkbox(description='use saved runs',value=False,layout=widgets.Layout(display='None'))
+                use_runs = widgets.Checkbox(description='use saved runs',value=True,layout=widgets.Layout(display='None'))
                 seed.observe(on_change_settings,names='value')
                 iterations.observe(on_change_settings,names='value')
                 runs.observe(on_change_settings,names='value')
@@ -219,6 +219,9 @@ class InterfaceVisualisation():
                 self.logfileWidget.observe(on_change_logfile, names='value')
 
                 def on_change_main(change):
+                        self.out.clear_output()
+                        plt.close()
+                        self.controls.layout.visibility = 'hidden'
                         if change['new'] == 'load from log file':
                                 self.logfileWidget.options = os.listdir('logs' + os.path.sep + 'saved')
                                 self.run_button.disabled = not len(self.logfileWidget.options) > 0
@@ -521,31 +524,15 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                         self.run_data.reset()
                         self.plot_instance.problem = None
 
-                def on_change_iter(change):
-                        i = change.new if change.new > 0 else 1
-                        self.plot_comparison(i)
 
-                self.iter_slider.observe(on_change_iter,names='value')
+                sum_radiobuttons = widgets.RadioButtons(options=[], layout=widgets.Layout(width='auto', grid_area='sum'))
 
                 solutions = widgets.RadioButtons(options=['best solutions','current solutions'], layout=widgets.Layout(width='auto', grid_area='sol'))
-                checkboxes = []
-                for o in ['max','min','polygon','median','mean','best']:
-                        checkboxes.append(self.init_checkbox(o))
-                        checkboxes[-1].value = True if o in ['median', 'polygon'] else False
-                        checkboxes[-1].layout = widgets.Layout(width='auto', grid_area=o)
-                        checkboxes[-1].indent= False
 
-                sum_radiobuttons = widgets.RadioButtons(options=['iter','succ', 'succ-rate%', 'tot-obj-gain', 'avg-obj-gain', 'rel-succ%',  'net-time',  'net-time%',  'brut-time',  'brut-time%'],
-                                                                layout=widgets.Layout(width='auto', grid_area='sum'))
 
-                def on_change_plotoptions(change):
-                        self.plot_comparison(self.iter_slider.value)
-
-                solutions.observe(on_change_plotoptions,names='value')
-                sum_radiobuttons.observe(on_change_plotoptions,names='value')
                 self.iter_slider.layout.grid_area='iter'
                 self.iter_slider.indent = False
-                self.plot_options = widgets.GridBox(children=[solutions, self.iter_slider, sum_radiobuttons] + checkboxes, 
+                self.plot_options = widgets.GridBox(children=[solutions, self.iter_slider, sum_radiobuttons], 
                                         layout=widgets.Layout(
                                                 padding='1em',
                                                 border='solid black 1px',
@@ -559,8 +546,25 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                                                 ". polygon best sum"
                                                 " iter iter iter sum"
                                                 '''))
+                checkboxes = []
+                for o in ['max','min','polygon','median','mean','best']:
+                        checkboxes.append(self.init_checkbox(o))
+                        checkboxes[-1].value = True if o in ['median', 'polygon'] else False
+                        checkboxes[-1].layout = widgets.Layout(width='auto', grid_area=o)
+                        checkboxes[-1].indent= False
 
+                self.plot_options.children += tuple(checkboxes)
+                def on_change_iter(change):
+                        i = change.new if change.new > 0 else 1
+                        self.plot_comparison(i)
 
+                self.iter_slider.observe(on_change_iter,names='value')
+
+                def on_change_plotoptions(change):
+                        self.plot_comparison(self.iter_slider.value)
+
+                solutions.observe(on_change_plotoptions,names='value')
+                sum_radiobuttons.observe(on_change_plotoptions,names='value')
                 reset.on_click(on_reset)
                 save_selected.on_click(self.save_runs)
 
@@ -610,6 +614,7 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                 # plot checked data
                 self.iter_slider.value = self.get_best_idx()
                 self.iter_slider.max = len(self.run_data.iteration_df)
+
                 self.plot_comparison(self.iter_slider.value)
 
 
@@ -645,6 +650,8 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
 
 
         def plot_comparison(self, i):
+                stats = self.run_data.get_stat_options()
+                self.plot_options.children[2].options = stats
                 with self.out:
                         checked = [c.description for c in self.line_checkboxes.children if c.value]
                         if checked == []:

@@ -13,6 +13,7 @@ import enum
 import time
 import pandas as pd
 from .problems import Configuration, Problem, Algorithm, Option
+import numpy as np
 
 class Log(enum.Enum):
         StepInter = 'step-by-step (intermediate steps)' # start-frame and end-frame for each step
@@ -25,6 +26,8 @@ class Log(enum.Enum):
 len_start = 7
 len_end = 8
 step_log_path = 'logs'+ os.path.sep + 'step.log'
+iter_log_path = "logs" + os.path.sep + "iter.log"
+sum_log_path = "logs" + os.path.sep + "summary.log"
 
 
 class LogData():
@@ -67,7 +70,10 @@ class LogData():
 
 
 
-def get_log_data(prob: str, alg: str):
+def read_step_log(prob: str, alg: str):
+    """Method for reading data logged by pymhlibs step-logger and creating data dicts for algorithm visualisation.
+    :returns: a list of dicts, each containing the data used for plotting one visualisation frame.
+    """
 
     data = list()
     with open(step_log_path, 'r') as logfile:
@@ -76,6 +82,57 @@ def get_log_data(prob: str, alg: str):
         logfile.close()
 
     return create_log_data(data)
+
+
+
+def read_sum_log():
+    """Reads algorithm summaries of n runs logged by pymhlibs general logger.
+    :returns: a dataframe containing algorithm statistics for n runs.
+    """
+    idx = []
+    with open(sum_log_path) as f: 
+        for i, line in enumerate(f):
+            if not line.startswith('S '):
+                idx.append(i)
+        f.close()
+        
+    df = pd.read_csv(sum_log_path, sep=r'\s+',skiprows=idx)
+    df.drop(labels=['S'], axis=1,inplace=True)
+    idx = df[ df['method'] == 'method' ].index
+    df.drop(idx , inplace=True)
+
+    n = len(df[df['method'] == 'SUM/AVG'])
+    m = int(len(df) / n)
+    df['run'] = (np.array([i for i in range(1,n+1)]).repeat(m))
+    df.set_index(['run','method'], inplace=True)
+    return df
+
+
+def read_iter_log(name):
+    """Reads iteration data logged by pymhlibs iteration logger.
+    :param name: name of the configuration the data belongs to.
+    :returns: a dataframe containing objective values of iterations for n runs.
+    """
+
+    df = pd.read_csv(iter_log_path, sep=r'\s+', header=None)
+
+    df.drop(df[ df[1] == '0' ].index , inplace=True) #drop initialisation line
+    df = df[4].reset_index().drop(columns='index') #extract 'obj_new'
+    indices = list((df[df[4] == 'obj_new'].index)) + [len(df)] #get indices of start of each run
+    list_df = []
+    #split data in single dataframes
+    for i in range(len(indices) - 1):
+        j = indices[i+1]-1
+        frame = df.loc[indices[i]:j]
+        frame = frame.reset_index().drop(columns='index')
+        list_df.append(frame)
+    full = pd.concat(list_df,axis=1) #concatenate dataframes
+    full.columns = [i for i in range(1,len(full.columns)+1)] #rename columns to run numbers
+    full.columns = pd.MultiIndex.from_tuples(zip([name]*len(full.columns), full.columns)) # set level of column
+    full = full.drop([0]) #drop line that holds old column names
+    full = full.astype(float)
+    
+    return full
 
 
 def create_log_data(data: list()):
@@ -279,6 +336,15 @@ class RunData():
         self.summaries = dict()
         self.iteration_df = pd.DataFrame()
 
+    def get_stat_options(self):
+        #stats = set()
+        #for df in self.summaries.values():
+         #   stats = stats.union(set(df.columns))
+        #print(stats)
+        if len(self.summaries) == 0:
+            return tuple()
+        return tuple(list(self.summaries.values())[0].columns)
+
     def save_to_logfile(self, config: Configuration, filepath: str, description: str=None, append: bool=False):
         mode = 'w' if description else 'r+'
         f = open(filepath, mode)
@@ -361,13 +427,3 @@ class RunData():
             return data,sm     
       
 
-
-# only used for debugging
-if __name__ == '__main__':
-    data = get_log_data('misp', 'grasp')
-    i = 0
-    for d in data:
-        print(d)
-        i += 1
-        if i > 10:
-            break
