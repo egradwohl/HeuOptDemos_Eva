@@ -32,11 +32,19 @@ sum_log_path = "logs" + os.path.sep + "summary.log"
 
 class LogData():
 
-    def __init__(self, log_data: list):
-        self.full_data = log_data
+    phases = {
+                Algorithm.GVNS: ('ch', 'li', ['sh', 'li']),
+                Algorithm.GRASP: (['rgc', 'li']),
+                Algorithm.TS: ('ch', ['li'])
+    }
+
+    def __init__(self, problem: Problem, algorithm: Algorithm, log_data: list):
+        self.problem = problem
+        self.algorithm = algorithm
+        self.full_data = [log_data[0]] + log_data #prepend additional frame for displaying instance in the beginning
         self.levels = self.init_levels()
         self.current_level = Log.StepInter
-        self.log_data = log_data # holds logdata for currently active log level
+        self.log_data = self.full_data # holds logdata for currently active log level
 
     def init_levels(self):
         # for each level the relevant indices are stored
@@ -337,10 +345,6 @@ class RunData():
         self.iteration_df = pd.DataFrame()
 
     def get_stat_options(self):
-        #stats = set()
-        #for df in self.summaries.values():
-         #   stats = stats.union(set(df.columns))
-        #print(stats)
         if len(self.summaries) == 0:
             return tuple()
         return tuple(list(self.summaries.values())[0].columns)

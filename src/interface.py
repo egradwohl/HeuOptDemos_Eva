@@ -162,7 +162,7 @@ class InterfaceVisualisation():
                         # starts call to pymhlib in handler module
                         log_data, instance = handler.run_algorithm_visualisation(params)
 
-                self.log_data = LogData(log_data)
+                self.log_data = LogData(params.problem, params.algorithm,log_data)
 
                 # initialize graph from instance
                 with self.out:
