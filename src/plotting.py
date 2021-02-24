@@ -96,7 +96,7 @@ class Draw(ABC):
 
                 self.add_description(i, comment)
                 self.add_legend()
-                self.load_pc_img(comment)
+                self.load_pc_img(i, log_data, comment)
 
 
         @abstractmethod
@@ -120,7 +120,7 @@ class Draw(ABC):
                         phase = comment.opt.value if comment.opt != Option.TL else Option.LI.value
 
                 if self.log_granularity == Log.Cycle and comment.opt != Option.CH:
-                        if self.algorithm == Algorithm.GVNS:
+                        if self.algorithm == Algorithm.GVNS and i > 2:
                                 phase = Option.SH.value + ' + ' + Option.LI.value
                         if self.algorithm == Algorithm.GRASP:
                                 phase = Option.RGC.value + ' + ' + Option.LI.value
@@ -148,7 +148,10 @@ class Draw(ABC):
                 return pc_imgs
 
 
-        def load_pc_img(self, comment: CommentParameters):
+        def load_pc_img(self, i: int, log_data: list, comment: CommentParameters):
+                if self.algorithm == Algorithm.GVNS:
+                        self.load_gvns_pc_img(i, log_data, comment)
+                        return
                 # TODO: load correct image according to current step
                 level = Log.StepInter.name.lower()
                 #if self.algorithm == Algorithm.GVNS:
@@ -159,7 +162,31 @@ class Draw(ABC):
                 better = better if m == Option.LI and status == 'end' else ''
                 path = lambda level,m,status,better: f'{level}{"_" + m.name.lower()}{"_" + status}{"_" + better if better != "" else ""}'
                 #print(path(level,m,status,better) + '.PNG')
-                img = self.pc_imgs[path(level,m,status,better) + '.PNG']
+                img = self.pc_imgs[path(level,m,status,better) + '.png']
+                self.img_ax.set_aspect('equal', anchor='E')
+                self.img_ax.imshow(img)#,extent=[0, 1, 0, 1])
+
+        def load_gvns_pc_img(self, i, log_data, comment: CommentParameters):
+                # find out, if li is part of initial vnd
+                init = ''
+                if comment.opt == Option.LI and self.log_granularity != Log.Cycle:
+                        j = i
+                        while j > 0:
+                                if log_data[j].get('m','') == 'ch':
+                                        init = '_init'
+                                        break
+                                if log_data[j].get('m','') == 'sh':
+                                        break
+                                j -= 1
+                elif comment.opt == Option.LI and log_data[i-1].get('m','') == 'ch':
+                        init = '_init'
+
+                level = self.log_granularity.name.lower() if self.log_granularity != Log.NewInc else Log.StepNoInter.name.lower()
+                m = '_' + comment.opt.name.lower()
+                status = '_' + comment.status if not comment.enditer else '_enditer'
+                better = '_better' if (comment.opt == Option.LI and not comment.no_change and comment.status == 'end' and not comment.enditer) or (init == '' and comment.opt == Option.LI and comment.enditer and comment.better) else ''
+                path = level + m + status + init + better + '.png'
+                img = self.pc_imgs[path]
                 self.img_ax.set_aspect('equal', anchor='E')
                 self.img_ax.imshow(img)#,extent=[0, 1, 0, 1])
 
@@ -259,6 +286,13 @@ class MISPDraw(Draw):
                         return comment_params
 
                 comment_params.opt = Option[data.get('m','li').upper()]
+                if comment_params.enditer:
+                        j = i-1
+                        while j > 0:
+                                if log_data[j].get('end_iter',False):
+                                        comment_params.better = log_data[i].get('best',0) > log_data[j].get('best',0)
+                                        break
+                                j -=1
                 self.draw_graph(data['inc'])
                 return comment_params
 
@@ -287,7 +321,7 @@ class MISPDraw(Draw):
                 # fill parameters for plot description
                 comment_params.remove = remove
                 comment_params.add = add
-                comment_params.gain =  data.get("obj",0) - log_data[i-1].get("obj",0)
+                comment_params.gain =  data.get('obj', 0) if comment_params.opt == Option.CH else data.get("obj",0) - log_data[i-1].get('obj',0)
                 comment_params.no_change = not (add or remove)
                 comment_params.better = data.get('better',False) or (log_data[i-1].get('best',0)< data.get('best',0))
                 comment_params.best = data['best']
@@ -556,6 +590,13 @@ class MAXSATDraw(Draw):
                 flipped_nodes += [n for n,t in self.graph.nodes(data='type') if t=='incumbent'] if data.get('better',False) else []
                 #comment_params.best = data.get('best',0)
                 #comment_params.obj = data.get('obj',0)
+                if comment_params.enditer:
+                        j = i-1
+                        while j > 0:
+                                if log_data[j].get('end_iter',False):
+                                        comment_params.better = log_data[i].get('best',0) > log_data[j].get('best',0)
+                                        break
+                                j -=1
                 self.draw_graph(flipped_nodes + list(comment_params.add.union(comment_params.remove)))
                 self.write_literal_info(lit_info)
                 self.add_sol_description(i,data)
@@ -581,6 +622,7 @@ class MAXSATDraw(Draw):
                         comment_params.obj = comment_params.best = 0
                         comment_params.opt = Option.CH
                         comment_params.par = data.get('par',0)
+
                         nx.set_node_attributes(self.graph, {k: self.grey for k in incumbent}, name='color')
                         self.draw_graph([])
                         self.add_sol_description(i,data)
@@ -597,7 +639,7 @@ class MAXSATDraw(Draw):
                 comment_params.add = added
                 comment_params.remove = removed
                 comment_params.par = data.get('par',1)
-                comment_params.gain = data.get("obj",0) - log_data[i-1].get('obj',0)
+                comment_params.gain = data.get('obj', 0) if comment_params.opt == Option.CH else data.get("obj",0) - log_data[i-1].get('obj',0)
                 comment_params.better = data.get('better',False) or (log_data[i-1].get('best',0) < data.get('best',0))
                 comment_params.no_change = len(flipped_nodes) == 0
                 comment_params.enditer = data.get('end_iter',False)

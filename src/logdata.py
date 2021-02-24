@@ -55,16 +55,10 @@ class LogData():
                     update.append(j)
             update.append(levels[Log.StepNoInter][-1])
 
-
-
-        #update = [i for i in levels[Log.StepNoInter][:-1] if i==0 or (self.full_data[i].get('m','') != 'li' and self.full_data[i].get('status','') == 'end') or 
-         #           (self.full_data[i].get('m','') == 'li' and self.full_data[i+1].get('m','') != 'li') or
-        #           len({'rgc','sh'}.intersection({data.get('m','') for data in self.full_data})) == 0 ]
-
-        #update.append(levels[Log.StepNoInter][-1])
-
         levels[Log.Update] = update
         levels[Log.Cycle] =[ i for i in levels[Log.Update] if self.full_data[i].get('m','') in ['ch', 'li'] or i== 0]
+        if self.full_data[levels[Log.Update][-1]].get('m','') != 'li' and not levels[Log.Update][-1] in levels[Log.Cycle]:
+            levels[Log.Cycle].append(levels[Log.Update][-1])
         for i in levels[Log.Cycle][1:]:
             self.full_data[i]['end_iter'] = True
 
