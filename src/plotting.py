@@ -152,6 +152,9 @@ class Draw(ABC):
                 if self.algorithm == Algorithm.GVNS:
                         self.load_gvns_pc_img(i, log_data, comment)
                         return
+                if self.algorithm == Algorithm.GRASP:
+                        self.load_grasp_pc_img(comment)
+                        return
                 # TODO: load correct image according to current step
                 level = Log.StepInter.name.lower()
                 #if self.algorithm == Algorithm.GVNS:
@@ -189,6 +192,18 @@ class Draw(ABC):
                 img = self.pc_imgs[path]
                 self.img_ax.set_aspect('equal', anchor='E')
                 self.img_ax.imshow(img)#,extent=[0, 1, 0, 1])
+
+        def load_grasp_pc_img(self, comment: CommentParameters):
+
+                level = self.log_granularity.name.lower() if self.log_granularity != Log.NewInc else Log.StepNoInter.name.lower()
+                m = '_' + comment.opt.name.lower()
+                status = '_' + comment.status if not comment.enditer else '_enditer'
+                better = '_better' if comment.opt != Option.RGC and comment.better else ''
+                path = level + m + status + better + '.png'
+                img = self.pc_imgs[path]
+                self.img_ax.set_aspect('equal', anchor='E')
+                self.img_ax.imshow(img)
+
 
         @abstractmethod
         def reset_graph(self):
@@ -343,6 +358,13 @@ class MISPDraw(Draw):
         def get_grasp_animation(self, i:int, log_data: list):
                 if log_data[i].get('m','') in ['ch', 'li'] or log_data[i].get('status','') == 'init':
                         comment = self.get_gvns_animation(i,log_data)
+                        if log_data[i].get('end_iter'):
+                                j = i-1
+                                while j >= 0:
+                                        if log_data[j].get('end_iter') or j == 0:
+                                                comment.better = log_data[i].get('best',0) > log_data[j].get('best',0)
+                                                break
+                                        j -= 1
                         return comment
 
                 data = log_data[i] 
@@ -716,6 +738,13 @@ class MAXSATDraw(Draw):
         def get_grasp_animation(self, i:int, log_data: list):
                 if log_data[i].get('m','') in ['ch', 'li'] or log_data[i].get('status','') == 'init':
                         comment = self.get_gvns_animation(i,log_data)
+                        if log_data[i].get('end_iter'):
+                                j = i-1
+                                while j >= 0:
+                                        if log_data[j].get('end_iter') or j == 0:
+                                                comment.better = log_data[i].get('best',0) > log_data[j].get('best',0)
+                                                break
+                                        j -= 1
                         return comment
 
                 incumbent = [i for i,t in self.graph.nodes(data='type') if t=='incumbent']
@@ -748,9 +777,11 @@ class MAXSATDraw(Draw):
                         return comment_params
 
                 nx.set_node_attributes(self.graph,{n:'' for n,t in self.graph.nodes(data='type') if t=='incumbent'}, name='label')
-
+                j = i
+                while not log_data[j].get('end_iter', False) and j > 0:
+                        j = j-1
+                comment_params.best = log_data[j].get('best',0)
                 if comment_params.status == 'start':
-                        comment_params.best = data.get('best',0)
                         comment_params.obj = 0
                         self.draw_graph([])
                         self.write_literal_info(dict.fromkeys(clauses,0))
@@ -776,13 +807,8 @@ class MAXSATDraw(Draw):
                 self.get_flipped_variables(i,log_data)
                 nx.set_edge_attributes(self.graph, {edge: 'black' for edge in self.graph.edges() if abs(sel) in edge}, 'color')
                 
-                j = i
-                while not log_data[j]['status'] in ['start','end']:
-                        j = j-1
-                        if j == 0:
-                                break
+
                 comment_params.gain = len(added)
-                comment_params.best = log_data[j].get('best',0)
                 comment_params.obj = sum(p > 0 for p in pos_literals.values())
                 # draw graph and print textual information
                 self.draw_graph(([abs(sel)] if sel != 0 else []) + list(added))
