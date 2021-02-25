@@ -155,19 +155,9 @@ class Draw(ABC):
                 if self.algorithm == Algorithm.GRASP:
                         self.load_grasp_pc_img(comment)
                         return
-                # TODO: load correct image according to current step
-                level = Log.StepInter.name.lower()
-                #if self.algorithm == Algorithm.GVNS:
-                 #       level = self.log_granularity.name.lower()
-                m = comment.opt if comment.opt != Option.TL else Option.LI
-                status = comment.status #if not log_info.get('end',False) else 'enditer'
-                better = 'better' if m == Option.LI and not comment.no_change else ''
-                better = better if m == Option.LI and status == 'end' else ''
-                path = lambda level,m,status,better: f'{level}{"_" + m.name.lower()}{"_" + status}{"_" + better if better != "" else ""}'
-                #print(path(level,m,status,better) + '.PNG')
-                img = self.pc_imgs[path(level,m,status,better) + '.png']
-                self.img_ax.set_aspect('equal', anchor='E')
-                self.img_ax.imshow(img)#,extent=[0, 1, 0, 1])
+                if self.algorithm == Algorithm.TS:
+                        self.load_ts_pc_img(comment)
+                        return
 
         def load_gvns_pc_img(self, i, log_data, comment: CommentParameters):
                 # find out, if li is part of initial vnd
@@ -204,6 +194,16 @@ class Draw(ABC):
                 self.img_ax.set_aspect('equal', anchor='E')
                 self.img_ax.imshow(img)
 
+        def load_ts_pc_img(self, comment: CommentParameters):
+                
+                level = self.log_granularity.name.lower() if self.log_granularity == Log.StepInter else Log.StepNoInter.name.lower()
+                m = '_' + comment.opt.name.lower() if comment.opt == Option.CH else '_' + Option.LI.name.lower()
+                status = '_' + comment.status if not comment.enditer else '_enditer'
+                better = '_better' if comment.opt != Option.CH and comment.better else ''
+                path = level + m + status + better + '.png'
+                img = self.pc_imgs[path]
+                self.img_ax.set_aspect('equal', anchor='E')
+                self.img_ax.imshow(img)
 
         @abstractmethod
         def reset_graph(self):
@@ -826,7 +826,6 @@ class MAXSATDraw(Draw):
                 done, lit_info = self.get_gvns_and_ts_animation(i,log_data,comment_params)
                 if done:
                         return comment_params
-                        
                 flipped_nodes = comment_params.flip 
                 
                 tabu_list = data.get('tabu',[])
