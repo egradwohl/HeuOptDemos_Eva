@@ -16,6 +16,7 @@ from .logdata import read_from_logfile, Log
 from matplotlib.lines import Line2D
 from dataclasses import dataclass
 from matplotlib import gridspec
+import random as rd
 
 
 plt.rcParams['figure.figsize'] = (12,6)
@@ -273,25 +274,40 @@ class MISPDraw(Draw):
 
         def init_graph(self, instance):
                 graph = instance.graph
-        
-                nodelist = list(graph.nodes())
-                nodelist = sorted(nodelist, key=lambda n:len(list(graph.neighbors(n))))
-                nodelist.reverse()
-                i = len(nodelist)
-                nl = []
-                while i > 0:
-                        j = int(i/2)
-                        nl.append(nodelist[j:i])
-                        i = j
-                nl.reverse()
-                #pos = nx.shell_layout(graph,nlist=nl)
-                
-                pos = nx.spring_layout(graph,k=1,iterations=30)
-                pos = nx.kamada_kawai_layout(graph,pos=pos)
+
+                #pos = nx.spring_layout(graph,k=0.8)
+                pos = nx.kamada_kawai_layout(graph)
+
+                pos = self.calculate_node_position(pos)
                 nx.set_node_attributes(graph, {n:{'color':self.grey, 'label':'', 'tabu':False} for n in graph.nodes()})
                 nx.set_node_attributes(graph, pos, 'pos')
                 nx.set_edge_attributes(graph, self.grey, 'color')
                 return graph
+
+        def calculate_node_position(self,init_pos: dict):
+                d_min = 0.14
+                in_place = False
+                i = 0
+                while i < 100 and not in_place:
+                        in_place = True
+                        for n in init_pos.keys():
+                                for m in init_pos.keys():
+                                        if m==n:
+                                                continue
+                                        point1 = init_pos[n]
+                                        point2 = init_pos[m]
+                                        dist = np.linalg.norm(point1 - point2)
+                                        dist = max(dist, 0.0001)
+                                        if dist < d_min:
+                                                in_place = False
+                                                r = (point1 - point2)/dist
+                                                new_pos = point1 + r * d_min #/dist
+                                                new_pos[0], new_pos[1] = max(rd.uniform(-0.85, -1), new_pos[0]), max(rd.uniform(-0.85, -1), new_pos[1])
+                                                new_pos[0], new_pos[1] = min(rd.uniform(0.85, 1), new_pos[0]), min(rd.uniform(0.85, 1), new_pos[1])
+                                                init_pos[m] = new_pos
+                        i +=1
+                return init_pos
+
 
         def get_gvns_animation(self, i:int, log_data: list):
                 data = log_data[i]
