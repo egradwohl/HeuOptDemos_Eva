@@ -1,4 +1,6 @@
 import sys
+
+from networkx import algorithms
 sys.path.append("C:/Users/Eva/Desktop/BakkArbeit/pymhlib")
 from pymhlib.demos.maxsat import MAXSATInstance
 from pymhlib.demos.misp import MISPInstance
@@ -17,6 +19,7 @@ from matplotlib.lines import Line2D
 from dataclasses import dataclass
 from matplotlib import gridspec
 import random as rd
+import matplotlib.patches as patches
 
 
 plt.rcParams['figure.figsize'] = (12,6)
@@ -583,9 +586,8 @@ class MAXSATDraw(Draw):
 
                 ### calculate positions for nodes
                 step = 2/(n+1)
-                y_pos = 0.2 if self.algorithm == Algorithm.TS else 0.4
-                pos = {v:[-1 + i*step, y_pos] for i,v in enumerate(variables, start=1)}
-                pos.update({i:[-1 +j*step,y_pos+0.2] for j,i in enumerate(incumbent, start=1)})
+                pos = {v:[-1 + i*step, 0.4] for i,v in enumerate(variables, start=1)}
+                pos.update({i:[-1 +j*step,0.4+0.2] for j,i in enumerate(incumbent, start=1)})
                 step = 2/(m+1)
                 pos.update({c:[-1+ i*step,-0.4] for i,c in enumerate(clauses_sorted, start=1)})
 
@@ -602,6 +604,8 @@ class MAXSATDraw(Draw):
 
                 for i,cl in enumerate(instance.clauses, start=1):
                         graph.add_edges_from([(i,abs(x)+ m,{'style':'dashed' if x < 0 else 'solid', 'color':self.grey}) for x in cl])
+
+                graph.__setattr__('ts_reposition', (False,1))
 
                 return graph
 
@@ -821,6 +825,10 @@ class MAXSATDraw(Draw):
 
 
         def get_ts_animation(self, i:int, log_data:list):
+
+                if i==0 and not self.graph.ts_reposition[0]:
+                        self.reposition_variables(log_data)
+
                 comment_params = CommentParameters()
                 data = log_data[i]
                 comment_params.status = data.get('status','start')
@@ -832,14 +840,17 @@ class MAXSATDraw(Draw):
                 
                 tabu_list = data.get('tabu',[])
                 asp = False
-                for ta in tabu_list:
-                        tabu_var = list(map(abs,ta[0]))
-                        life = ta[1]
-                        nodes = [n for n,t in self.graph.nodes(data='type') if t=='variable' and self.graph.nodes[n]['nr'] in tabu_var]
-                        nx.set_node_attributes(self.graph, {n: {'tabu':True,'label':str(life)} for n in nodes})
-                        if comment_params.status == 'start' and set(nodes).issubset(set(flipped_nodes)):
-                                asp = True
-                
+                multi_tabu_attr = self.graph.ts_reposition[1] > 1
+                if not multi_tabu_attr:
+                        for ta in tabu_list:
+                                tabu_var = list(map(abs,ta[0]))
+                                life = ta[1]
+                                nodes = [n for n,t in self.graph.nodes(data='type') if t=='variable' and self.graph.nodes[n]['nr'] in tabu_var]
+                                nx.set_node_attributes(self.graph, {n: {'tabu':True,'label':str(life)} for n in nodes})
+                                if comment_params.status == 'start' and set(nodes).issubset(set(flipped_nodes)):
+                                        asp = True
+
+
                 comment_params.asp = asp
                 comment_params.ll = data.get('ll',0)
                 comment_params.opt = Option.CH if data.get('m').startswith('ch') else Option.TL
@@ -847,9 +858,47 @@ class MAXSATDraw(Draw):
                 flipped_nodes = [] if comment_params.status == 'end' else comment_params.flip
                 flipped_nodes += [n for n,t in self.graph.nodes(data='type') if t=='incumbent'] if data.get('better',False) else []
                 self.draw_graph(flipped_nodes + list(comment_params.add.union(comment_params.remove)))
+                if multi_tabu_attr:
+                        self.draw_multi_tabu_attr_list(tabu_list)
                 self.write_literal_info(lit_info)
                 self.add_sol_description(i,data)
                 return comment_params
+
+        def draw_multi_tabu_attr_list(self, tabu_list):
+                if len(tabu_list) == 0:
+                        return
+                max_size = 0.05
+                size = min((0.5/(len(tabu_list)*2)), max_size)
+                tabu_list.sort(reverse=True,key=lambda t:t[1])
+                var_pos = {data['nr']:data['pos'] for n, data in self.graph.nodes(data=True) if data['type']=='variable'}
+                y_pos = 0.3
+                xmin = (var_pos[min(var_pos.keys())][0]- (-1))/(1- (-1))
+                xmax = (var_pos[max(var_pos.keys())][0]- (-1))/(1- (-1))
+                for ta in tabu_list:
+                        self.ax.axhline(y=y_pos+size/2, xmin = xmin, xmax = xmax, color=self.grey,zorder=0)
+                        for tv in ta[0]:
+                                col = self.blue if tv > 0 else self.red
+                                p = patches.Rectangle((var_pos[abs(tv)][0]-0.075/2, y_pos), width=0.075, height=size, ec=col, fc=col,zorder=10)
+                                self.ax.add_patch(p)
+                        self.ax.text(var_pos[min(var_pos.keys())][0]*1.2, y_pos, str(ta[1]), family='sans-serif',size='medium',weight='semibold')
+                        y_pos += size*2
+                        
+                for t in tabu_list:
+                        continue
+                
+
+        def reposition_variables(self, log_data: list):
+                max_par = max([data.get('par',1) for data in log_data])
+                if max_par == 1:
+                        self.graph.ts_reposition = (True,1)
+                        return
+                #max_ll = max([data.get('ll',0) for data in log_data])
+                nx.set_node_attributes(self.graph, {n: np.array([pos[0],0.2]) for n,pos in self.graph.nodes(data='pos') if self.graph.nodes[n]['type']=='variable'}, 'pos')
+                nx.set_node_attributes(self.graph, {n: np.array([pos[0],0.9]) for n,pos in self.graph.nodes(data='pos') if self.graph.nodes[n]['type']=='incumbent'}, 'pos')
+                #y_pos = 0.2 if self.algorithm == Algorithm.TS else 0.4
+                self.graph.ts_reposition = (True,max_par)
+
+        
 
 
         def write_cl_info(self, cl: dict(), rcl: list(), sel: int):
