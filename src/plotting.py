@@ -68,6 +68,7 @@ class Draw(ABC):
                 self.graph = self.init_graph(instance)
                 self.log_granularity = log_granularity
                 self.pc_imgs = self.load_pc_img_files()
+                self.legend_elems = self.create_legend_elems()
                 # create figure
                 plt.close() # close any previously drawn figures
                 gs = gridspec.GridSpec(2, 2,height_ratios=[1,8], width_ratios=[2,1] )
@@ -136,9 +137,11 @@ class Draw(ABC):
                 self.descr_ax.text(0,1, text, horizontalalignment='left', verticalalignment='top')#, transform=self.ax.transAxes)
 
 
+        def add_legend(self):
+                self.ax.legend(self.legend_elems[0], self.legend_elems[1],  ncol=2, handlelength=1, borderpad=0.7, columnspacing=0, loc='lower left')
 
         @abstractmethod
-        def add_legend(self):
+        def create_legend_elems(self):
                 pass
 
         def load_pc_img_files(self):
@@ -209,8 +212,8 @@ class Draw(ABC):
         @abstractmethod
         def reset_graph(self):
                 pass
-        @abstractmethod
 
+        @abstractmethod
         def draw_graph(self):
                 pass
 
@@ -288,20 +291,18 @@ class MISPDraw(Draw):
                 d_min = 0.14
                 in_place = False
                 i = 0
-                while i < 100 and not in_place:
+                while i < 50 and not in_place:
                         in_place = True
-                        for n in init_pos.keys():
-                                for m in init_pos.keys():
+                        for n, point1 in init_pos.items():
+                                for m, point2 in init_pos.items():
                                         if m==n:
                                                 continue
-                                        point1 = init_pos[n]
-                                        point2 = init_pos[m]
                                         dist = np.linalg.norm(point1 - point2)
                                         dist = max(dist, 0.0001)
                                         if dist < d_min:
                                                 in_place = False
                                                 r = (point1 - point2)/dist
-                                                new_pos = point1 + r * d_min #/dist
+                                                new_pos = point1 + r * d_min
                                                 new_pos[0], new_pos[1] = max(rd.uniform(-0.85, -1), new_pos[0]), max(rd.uniform(-0.85, -1), new_pos[1])
                                                 new_pos[0], new_pos[1] = min(rd.uniform(0.85, 1), new_pos[0]), min(rd.uniform(0.85, 1), new_pos[1])
                                                 init_pos[m] = new_pos
@@ -448,12 +449,9 @@ class MISPDraw(Draw):
                 return comment_params
 
 
-        def add_legend(self):
+        def create_legend_elems(self):
 
-                legend_elements = tuple()
-                description = tuple()
-
-                legend_elements = (
+                legend_elements = [
                         Line2D([0], [0],linestyle='none'),
                         Line2D([0],[0],marker='o', color='w',
                                 markerfacecolor=self.red, markersize=13),
@@ -465,33 +463,24 @@ class MISPDraw(Draw):
                                 markerfacecolor=self.green, markersize=13),
                         Line2D([0], [0], marker='o', linestyle='none',
                                 markerfacecolor='w',markeredgecolor=self.yellow,markeredgewidth=2, markersize=11)     
-                        )
-                description = ('','','','current solution','remove/add node', 'best solution')
+                        ]
+                description = ['','','','current solution','remove/add node', 'best solution']
 
                 if self.algorithm == Algorithm.TS:
-                        legend_elements = list(legend_elements)
                         legend_elements.insert(3,(Line2D([0], [0],linestyle='none')))
                         legend_elements.append(Line2D([0],[0],marker='X', color='w',
                                         markerfacecolor='black', markersize=13))
-                        legend_elements = tuple(legend_elements)
-                        description = list(description)
                         description.insert(3,'')
                         description.append('tabu attribute')
-                        description = tuple(description)
-
 
                 if self.algorithm == Algorithm.GRASP:
-                        legend_elements = list(legend_elements)
                         legend_elements.insert(3,(Line2D([0], [0],linestyle='none')))
                         legend_elements.append(Line2D([0],[0],marker='o', color='w',
                                         markerfacecolor=self.orange, markersize=13))
-                        legend_elements = tuple(legend_elements)
-                        description = list(description)
                         description.insert(3,'')
                         description.append('blocked neighbor')
-                        description = tuple(description)
 
-                self.ax.legend(legend_elements, description,  ncol=2, handlelength=1, borderpad=0.7, columnspacing=0, loc='lower left')
+                return (tuple(legend_elements), tuple(description))
 
         def reset_graph(self):
                 nx.set_node_attributes(self.graph, self.grey, name='color')
@@ -626,8 +615,6 @@ class MAXSATDraw(Draw):
                 
                 flipped_nodes = [] if comment_params.status == 'end' else comment_params.flip
                 flipped_nodes += [n for n,t in self.graph.nodes(data='type') if t=='incumbent'] if data.get('better',False) else []
-                #comment_params.best = data.get('best',0)
-                #comment_params.obj = data.get('obj',0)
                 if comment_params.enditer:
                         j = i-1
                         while j > 0:
@@ -705,7 +692,6 @@ class MAXSATDraw(Draw):
         
                 if info['status'] == 'end' and info.get('m','') != 'ch':
                         nx.set_edge_attributes(self.graph, {edge: 'black' for edge in self.graph.edges() if set(edge) & set(flipped_variables)}, 'color')
-                        #nx.set_edge_attributes(self.graph, {edge: self.blue if self.graph.edges[edge]['style'] == 'solid' else self.red for edge in self.graph.edges() if set(edge) & set(flipped_variables)}, 'color')
                 return flipped_variables
 
         def color_and_get_changed_clauses(self,value,log_data, start=True):
@@ -857,8 +843,6 @@ class MAXSATDraw(Draw):
                 comment_params.asp = asp
                 comment_params.ll = data.get('ll',0)
                 comment_params.opt = Option.CH if data.get('m').startswith('ch') else Option.TL
-                #comment_params.best = data.get('best',0)
-                #comment_params.obj = data.get('obj',0)
 
                 flipped_nodes = [] if comment_params.status == 'end' else comment_params.flip
                 flipped_nodes += [n for n,t in self.graph.nodes(data='type') if t=='incumbent'] if data.get('better',False) else []
@@ -880,8 +864,8 @@ class MAXSATDraw(Draw):
                         bbox = dict(boxstyle="circle",fc="white", ec=c, pad=0.2) if k == sel else None
                         self.ax.text(pos[0],pos[1]+0.2+(0.05*np.sign(k)), v, {'color': c, 'ha': 'center', 'va': 'center','fontweight':'bold','bbox': bbox})
 
-        def add_legend(self):
-                legend_elements = (
+        def create_legend_elems(self):
+                legend_elements = [
                                         Line2D([0], [0], marker='s', linestyle='none', markeredgewidth=0,
                                                 markerfacecolor=self.blue, markersize=11),
                                         Line2D([0], [0], marker='o', color='w',
@@ -895,21 +879,17 @@ class MAXSATDraw(Draw):
                                                 markerfacecolor=self.green, markersize=13),
                                         Line2D([0], [0], marker='s', linestyle='none',
                                                 markerfacecolor='w',markeredgecolor=self.yellow,markeredgewidth=2, markersize=11),
-                                        )
-                description = ('','','','true/false variable','unfullfilled/fullfilled clause','change in clauses/solution')
+                                ]
+                description = ['','','','true/false variable','unfullfilled/fullfilled clause','change in clauses/solution']
 
                 if self.algorithm == Algorithm.TS:
-                        legend_elements = list(legend_elements)
                         legend_elements.insert(3, Line2D([0], [0],linestyle='none'))
                         legend_elements.append(Line2D([0], [0], marker='X', color='w',
                                                 markerfacecolor='black', markersize=13))
-                        legend_elements = tuple(legend_elements)
-                        description = list(description)
                         description.insert(3,'')
                         description.append('tabu attribute')
-                        description = tuple(description)
 
-                self.ax.legend(legend_elements, description,  ncol=2, handlelength=1, borderpad=0.7, columnspacing=0, loc='lower left')
+                return (tuple(legend_elements), tuple(description))
 
 
         def reset_graph(self):
