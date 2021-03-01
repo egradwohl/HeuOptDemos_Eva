@@ -27,6 +27,7 @@ plt.rcParams['figure.dpi'] = 80
 plt.rcParams['figure.autolayout'] = True
 plt.rcParams['axes.facecolor'] = 'w'
 pc_dir = 'pseudocode'
+pc_img_type = '.png'
 
 
 @dataclass
@@ -59,8 +60,8 @@ class Draw(ABC):
         grey = str(210/255) #'lightgrey'
         darkgrey = str(125/255)
         white = 'white'
-        blue = 'royalblue' #(128/255,128/255,255/255)#'royalblue'
-        red = 'tomato'#(255/255,99/255,71/255)#'tomato'
+        blue = 'royalblue'
+        red = 'tomato'
         green = 'limegreen'
         yellow = 'gold'
         orange = 'darkorange'
@@ -185,7 +186,7 @@ class Draw(ABC):
                 m = '_' + comment.opt.name.lower()
                 status = '_' + comment.status if not comment.enditer else '_enditer'
                 better = '_better' if (comment.opt == Option.LI and not comment.no_change and comment.status == 'end' and not comment.enditer) or (init == '' and comment.opt == Option.LI and comment.enditer and comment.better) else ''
-                path = level + m + status + init + better + '.png'
+                path = level + m + status + init + better + pc_img_type
                 img = self.pc_imgs[path]
                 self.img_ax.set_aspect('equal', anchor='E')
                 self.img_ax.imshow(img)#,extent=[0, 1, 0, 1])
@@ -196,7 +197,7 @@ class Draw(ABC):
                 m = '_' + comment.opt.name.lower()
                 status = '_' + comment.status if not comment.enditer else '_enditer'
                 better = '_better' if comment.opt != Option.RGC and comment.better else ''
-                path = level + m + status + better + '.png'
+                path = level + m + status + better + pc_img_type
                 img = self.pc_imgs[path]
                 self.img_ax.set_aspect('equal', anchor='E')
                 self.img_ax.imshow(img)
@@ -207,7 +208,7 @@ class Draw(ABC):
                 m = '_' + comment.opt.name.lower() if comment.opt == Option.CH else '_' + Option.LI.name.lower()
                 status = '_' + comment.status if not comment.enditer else '_enditer'
                 better = '_better' if comment.opt != Option.CH and comment.better else ''
-                path = level + m + status + better + '.png'
+                path = level + m + status + better + pc_img_type
                 img = self.pc_imgs[path]
                 self.img_ax.set_aspect('equal', anchor='E')
                 self.img_ax.imshow(img)
@@ -266,9 +267,9 @@ class MISPDraw(Draw):
                                 'cycle_start': lambda params: f'restricted candidate list=' + (f'{params.k}-best\n' if params.k else f'alpha: {params.alpha}\n')
                         },
                         Option.TL:{
-                                'start': lambda params: f'k={params.par}, remove {len(params.remove)} node(s), add {len(params.add)} node(s){", apply aspiration criterion" if params.asp else ""}',
-                                'end': lambda params: f'size of tabu list={params.ll}, objective gain={params.gain}{", all possible exchanges are tabu" if params.no_change else ""}{", found new best solution" if params.better else ""}',
-                                'cycle_start': lambda params: f'k={params.par}, remove {len(params.remove)} node(s), add {len(params.add)} node(s){", apply aspiration criterion" if params.asp else ""}\n'
+                                'start': lambda params: f'k={params.par}, remove {len(params.remove)} node(s), add {len(params.add)} node(s)',
+                                'end': lambda params: f'size of tabu list={params.ll}, objective gain={params.gain}{", applied aspiration criterion" if params.asp else ""}{", all possible exchanges are tabu" if params.no_change else ""}{", found new best solution" if params.better else ""}',
+                                'cycle_start': lambda params: f'k={params.par}, remove {len(params.remove)} node(s), add {len(params.add)} node(s)\n'
                                
                         }
                         
@@ -444,8 +445,9 @@ class MISPDraw(Draw):
                         nx.set_node_attributes(self.graph, {n: {'label':life,'tabu':True} for n in tabu_nodes})
                         if comment_params.status == 'start' and set(tabu_nodes).issubset(comment_params.add):
                                 asp_nodes = asp_nodes.union(set(tabu_nodes).intersection(comment_params.add))
+                        
 
-                comment_params.asp = len(asp_nodes) > 0
+                comment_params.asp = len(asp_nodes) > 0 or (comment_params.status == 'end' and 'ta_del' in data.keys())
                 comment_params.ll = data.get('ll',0)
                 comment_params.opt = Option.CH if data.get('m').startswith('ch') else Option.TL
                 self.draw_graph(data.get('inc',[]))
@@ -555,9 +557,9 @@ class MAXSATDraw(Draw):
                         'cycle_start': lambda params: f'restricted candidate list=' + (f'{params.k}-best' if params.k else f'alpha: {params.alpha}') + '\n'
                 },
                 Option.TL:{
-                        'start': lambda params: f'k={params.par} flipping {len(params.flip)} variable(s){", apply aspiration criterion" if params.asp else ""}',
-                        'end': lambda params: f'size of tabu list={params.ll}, objective gain={params.gain}{", all possible flips are tabu" if params.no_change else ""}{", found new best solution" if params.better else ""}',
-                        'cycle_start': lambda params: f'k={params.par}, flipping {len(params.flip)} variable(s){", apply aspiration criterion" if params.asp else ""}\n'
+                        'start': lambda params: f'k={params.par} flipping {len(params.flip)} variable(s)',
+                        'end': lambda params: f'size of tabu list={params.ll}, objective gain={params.gain}{", applied aspiration criterion" if params.asp else ""}{", all possible flips are tabu" if params.no_change else ""}{", found new best solution" if params.better else ""}',
+                        'cycle_start': lambda params: f'k={params.par}, flipping {len(params.flip)} variable(s)\n'
                        
                 }
                 }
@@ -605,7 +607,7 @@ class MAXSATDraw(Draw):
                 for i,cl in enumerate(instance.clauses, start=1):
                         graph.add_edges_from([(i,abs(x)+ m,{'style':'dashed' if x < 0 else 'solid', 'color':self.grey}) for x in cl])
 
-                graph.__setattr__('ts_reposition', (False,1))
+                graph.__setattr__('ts_reposition', False)
 
                 return graph
 
@@ -826,7 +828,7 @@ class MAXSATDraw(Draw):
 
         def get_ts_animation(self, i:int, log_data:list):
 
-                if i==0 and not self.graph.ts_reposition[0]:
+                if i==0 and not self.graph.ts_reposition:
                         self.reposition_variables(log_data)
 
                 comment_params = CommentParameters()
@@ -839,26 +841,26 @@ class MAXSATDraw(Draw):
                 flipped_nodes = comment_params.flip 
                 
                 tabu_list = data.get('tabu',[])
-                asp = False
-                multi_tabu_attr = self.graph.ts_reposition[1] > 1
-                if not multi_tabu_attr:
+                if not self.graph.ts_reposition:
                         for ta in tabu_list:
                                 tabu_var = list(map(abs,ta[0]))
                                 life = ta[1]
                                 nodes = [n for n,t in self.graph.nodes(data='type') if t=='variable' and self.graph.nodes[n]['nr'] in tabu_var]
                                 nx.set_node_attributes(self.graph, {n: {'tabu':True,'label':str(life)} for n in nodes})
-                                if comment_params.status == 'start' and set(nodes).issubset(set(flipped_nodes)):
-                                        asp = True
 
-
-                comment_params.asp = asp
                 comment_params.ll = data.get('ll',0)
                 comment_params.opt = Option.CH if data.get('m').startswith('ch') else Option.TL
+                if comment_params.status == 'start':
+                        flipped = [nr for n,nr in self.graph.nodes(data='nr') if n in flipped_nodes]
+                        flipped = {e * (-1 if s else 1) for e,s in enumerate(data.get('sol',[]),start=1) if e in flipped}
+                        comment_params.asp = any(set(t[0]) == flipped for t in tabu_list)
+                elif 'ta_del' in data.keys():
+                        comment_params.asp = True
 
                 flipped_nodes = [] if comment_params.status == 'end' else comment_params.flip
                 flipped_nodes += [n for n,t in self.graph.nodes(data='type') if t=='incumbent'] if data.get('better',False) else []
                 self.draw_graph(flipped_nodes + list(comment_params.add.union(comment_params.remove)))
-                if multi_tabu_attr:
+                if self.graph.ts_reposition:
                         self.draw_multi_tabu_attr_list(tabu_list)
                 self.write_literal_info(lit_info)
                 self.add_sol_description(i,data)
@@ -883,20 +885,19 @@ class MAXSATDraw(Draw):
                         self.ax.text(var_pos[min(var_pos.keys())][0]*1.2, y_pos, str(ta[1]), family='sans-serif',size='medium',weight='semibold')
                         y_pos += size*2
                         
-                for t in tabu_list:
-                        continue
                 
-
         def reposition_variables(self, log_data: list):
-                max_par = max([data.get('par',1) for data in log_data])
-                if max_par == 1:
-                        self.graph.ts_reposition = (True,1)
+                #max_par = max([data.get('par',1) for data in log_data])
+                reposition = False
+                for data in log_data:
+                        if any(len(ta[0]) > 1 for ta in data.get('tabu',[(set(),)])):
+                                reposition = True
+                                break
+                if not reposition or self.graph.ts_reposition:
                         return
-                #max_ll = max([data.get('ll',0) for data in log_data])
                 nx.set_node_attributes(self.graph, {n: np.array([pos[0],0.2]) for n,pos in self.graph.nodes(data='pos') if self.graph.nodes[n]['type']=='variable'}, 'pos')
                 nx.set_node_attributes(self.graph, {n: np.array([pos[0],0.9]) for n,pos in self.graph.nodes(data='pos') if self.graph.nodes[n]['type']=='incumbent'}, 'pos')
-                #y_pos = 0.2 if self.algorithm == Algorithm.TS else 0.4
-                self.graph.ts_reposition = (True,max_par)
+                self.graph.ts_reposition = True
 
         
 
