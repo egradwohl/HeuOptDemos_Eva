@@ -28,6 +28,7 @@ plt.rcParams['figure.autolayout'] = True
 plt.rcParams['axes.facecolor'] = 'w'
 pc_dir = 'pseudocode'
 pc_img_type = '.png'
+D_MIN = 0.14
 
 
 @dataclass
@@ -238,6 +239,27 @@ class Draw(ABC):
                         comment = self.comments[option]
                         return comment['cycle_start'](params) + comment['end'](params)
 
+        def calculate_node_position(self,graph):
+                init_pos = nx.kamada_kawai_layout(graph)
+                in_place = False
+                i = 0
+                while i < 50 and not in_place:
+                        in_place = True
+                        for n, point1 in init_pos.items():
+                                for m, point2 in init_pos.items():
+                                        if m==n:
+                                                continue
+                                        dist = np.linalg.norm(point1 - point2)
+                                        dist = max(dist, 0.0001)
+                                        if dist < D_MIN:
+                                                in_place = False
+                                                r = (point1 - point2)/dist
+                                                new_pos = point1 + r * D_MIN
+                                                new_pos[0], new_pos[1] = max(rd.uniform(-0.85, -1), new_pos[0]), max(rd.uniform(-0.85, -1), new_pos[1])
+                                                new_pos[0], new_pos[1] = min(rd.uniform(0.85, 1), new_pos[0]), min(rd.uniform(0.85, 1), new_pos[1])
+                                                init_pos[m] = new_pos
+                        i +=1
+                return init_pos
 
 class MISPDraw(Draw):
 
@@ -281,37 +303,13 @@ class MISPDraw(Draw):
 
         def init_graph(self, instance):
                 graph = instance.graph
-
-                #pos = nx.spring_layout(graph,k=0.8)
-                pos = nx.kamada_kawai_layout(graph)
-
-                pos = self.calculate_node_position(pos)
+                pos = self.calculate_node_position(graph)
                 nx.set_node_attributes(graph, {n:{'color':self.grey, 'label':'', 'tabu':False} for n in graph.nodes()})
                 nx.set_node_attributes(graph, pos, 'pos')
                 nx.set_edge_attributes(graph, self.grey, 'color')
                 return graph
 
-        def calculate_node_position(self,init_pos: dict):
-                d_min = 0.14
-                in_place = False
-                i = 0
-                while i < 50 and not in_place:
-                        in_place = True
-                        for n, point1 in init_pos.items():
-                                for m, point2 in init_pos.items():
-                                        if m==n:
-                                                continue
-                                        dist = np.linalg.norm(point1 - point2)
-                                        dist = max(dist, 0.0001)
-                                        if dist < d_min:
-                                                in_place = False
-                                                r = (point1 - point2)/dist
-                                                new_pos = point1 + r * d_min
-                                                new_pos[0], new_pos[1] = max(rd.uniform(-0.85, -1), new_pos[0]), max(rd.uniform(-0.85, -1), new_pos[1])
-                                                new_pos[0], new_pos[1] = min(rd.uniform(0.85, 1), new_pos[0]), min(rd.uniform(0.85, 1), new_pos[1])
-                                                init_pos[m] = new_pos
-                        i +=1
-                return init_pos
+
 
 
         def get_gvns_animation(self, i:int, log_data: list):
@@ -882,12 +880,14 @@ class MAXSATDraw(Draw):
                                 col = self.blue if tv > 0 else self.red
                                 p = patches.Rectangle((var_pos[abs(tv)][0]-0.075/2, y_pos), width=0.075, height=size, ec=col, fc=col,zorder=10)
                                 self.ax.add_patch(p)
+                                self.ax.scatter(var_pos[abs(tv)][0],y_pos+size/2, marker='x', color='black', s=120, zorder=50)
+
                         self.ax.text(var_pos[min(var_pos.keys())][0]*1.2, y_pos, str(ta[1]), family='sans-serif',size='medium',weight='semibold')
+                        
                         y_pos += size*2
                         
                 
         def reposition_variables(self, log_data: list):
-                #max_par = max([data.get('par',1) for data in log_data])
                 reposition = False
                 for data in log_data:
                         if any(len(ta[0]) > 1 for ta in data.get('tabu',[(set(),)])):
