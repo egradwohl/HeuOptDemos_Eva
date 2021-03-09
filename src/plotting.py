@@ -153,7 +153,7 @@ class Draw(ABC):
                 filenames = os.listdir(pc_dir + os.path.sep + self.algorithm.name.lower())
                 pc_imgs = dict()
                 for f in filenames:
-                        pc_imgs[f] = mpimg.imread(pc_dir + os.path.sep + self.algorithm.name.lower() + os.path.sep + f)
+                        pc_imgs[f.lower()] = mpimg.imread(pc_dir + os.path.sep + self.algorithm.name.lower() + os.path.sep + f)
                 return pc_imgs
 
 
