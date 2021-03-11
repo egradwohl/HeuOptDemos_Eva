@@ -1,3 +1,7 @@
+"""
+This module provides classes for defining optimization problems and algorithms, storing configurations of an algorithm and retrieving information for interface widgets.
+"""
+
 import sys
 sys.path.append("C:/Users/Eva/Desktop/BakkArbeit/pymhlib")
 from pymhlib.demos.maxsat import MAXSATInstance, MAXSATSolution
@@ -9,11 +13,13 @@ from pymhlib import demos
 import enum
 import os
 from abc import ABC, abstractmethod
+from typing import List
 
 
 
-
+# path for reading instance files for runtime comparison -> pymhlib demo data
 demo_data_path = os.path.dirname(demos.__file__) + os.path.sep + 'data' + os.path.sep
+# path for reading instance files for algorithm visualisation
 vis_data_path = 'instances' + os.path.sep
 
 # extend enums as needed, they hold the string values which are used for representation in widgets
@@ -44,7 +50,7 @@ class Parameters():
         - name: name of the option which is also the name in the jupyter widget
         - callback: function callback that will be used for this option
         - param_type: type of parameter used in the callback e.g. float, int
-        - value: value of parameter used in callback, if provided it represents a fixed value, otherwise it will be set in the widgets
+        - value: value of parameter used in callback, if provided it represents a fixed value, otherwise it can be set in the widgets by a user
     """
 
     def __init__(self, name: str, callback=None, param_type: type=None, value=None):
@@ -53,10 +59,12 @@ class Parameters():
         self.param_type = type(value) if value != None else param_type
         self.value = value
 
-    def get_widget_info(self):
+    def get_widget_info(self) -> tuple:
+        """ Returns information about this parameter as (name, value)-pair, which is relevant for interface widgets"""
         return (self.name,self.param_type if self.value == None else self.value)
 
-    def get_method(self, opt: Option, par=None):
+    def get_method(self, opt: Option, par=None) -> Method:
+        """ Returns a pymhlib scheduler Method if a callback is provided, None otherwise."""
         param = par if par != None else self.value
         if self.callback == None:
             return None
@@ -91,14 +99,16 @@ class Configuration():
         self.use_runs = use_runs
         self.saved_runs = [] if saved_runs == None else saved_runs
 
-    def get_inst_path(self, visualisation: bool=False):
+    def get_inst_path(self, visualisation: bool=False) -> str:
+        """ Returns the entire file path of the given instance."""
         if self.instance.startswith('random'):
             return self.instance
         if visualisation:
             return vis_data_path + self.instance
         return demo_data_path + self.instance
 
-    def make_copy(self):
+    def make_copy(self) -> "Configuration":
+        """ Returns a deep copy of this Configuration."""
         copy = Configuration(self.problem, self.algorithm, self.instance, runs=self.runs, iterations=self.iterations, seed=self.seed, use_runs=self.use_runs, name=self.name)
         copy.options = {k: [i for i in v] if type(v) == list else v for k,v in self.options.items()}
         copy.saved_runs = [s for s in self.saved_runs]
@@ -111,6 +121,7 @@ class ProblemDefinition(ABC):
     Attributes
         - name: name of the problem, instance of Problem enum
         - options: dict of dicts of available algorithms and their corresponding available options/methodes
+        - to_maximize: True, if this problem is a maximization problem, False otherwisse
     """
     def __init__(self, name: Problem, options: dict, to_maximize: bool = True):
         self.name = name
@@ -118,10 +129,12 @@ class ProblemDefinition(ABC):
         self.to_maximize = to_maximize
     
 
-    def get_algorithms(self):
+    def get_algorithms(self) -> List[Algorithm]:
+        """ Returns a list of available algoriths for this problem."""
         return [k.value for k,_ in self.options.items()]
 
-    def get_options(self, algo: Algorithm):
+    def get_options(self, algo: Algorithm) -> dict:
+        """ Returns available options for a given algorithm as dict, each entry holds a list of tuples with widget information."""
         options = {}
         for o,m in self.options[algo].items():
             options[o] = [p.get_widget_info() for p in m]
@@ -131,14 +144,16 @@ class ProblemDefinition(ABC):
     def get_solution(self, instance_path: str):
         pass
 
-    def get_instances(self,visualisation):
+    def get_instances(self,visualisation) -> List[str]:
+        """ Returns a list of available instance files for this problem. """
         path = vis_data_path if visualisation else demo_data_path
         if os.path.isdir(path):
             return os.listdir(path)
         return []
     
 
-    def get_method(self, algo:Algorithm, opt: Option, name: str, par):
+    def get_method(self, algo:Algorithm, opt: Option, name: str, par) -> Method:
+        """ Creates and returns a pymhlib scheduler Method for a given method's name. """
         m = [p for p in self.options[algo][opt] if p.name == name]
         assert len(m) > 0, f'method not found: {name}'
         return m[0].get_method(opt,par)
@@ -146,6 +161,9 @@ class ProblemDefinition(ABC):
 
 
 class MAXSAT(ProblemDefinition):
+    """
+    A problem class defining the available algorithms and their available configuration options for the Max-SAT Problem.
+    """
 
     def __init__(self):
 
@@ -172,17 +190,21 @@ class MAXSAT(ProblemDefinition):
 
         super().__init__(Problem.MAXSAT, options)
 
-    def get_solution(self, instance_path: str):
+    def get_solution(self, instance_path: str)-> MAXSATSolution:
+        """ Creates a pymhlib MAXSAT instance of the given file name and returns a pymhlib MAXSATSolution object initialized with this instance. """
         instance = MAXSATInstance(instance_path)
         return MAXSATSolution(instance)
 
-    def get_instances(self,visualisation):
+    def get_instances(self,visualisation) -> List[str]:
+        """ Returns a list of available instance files for MAXSAT."""
         inst = super().get_instances(visualisation)
         return [i for i in inst if i[-3:] == 'cnf']
 
 
 class MISP(ProblemDefinition):
-
+    """
+    A problem class defining the available algorithms and their available configuration options for the Max-Independent Set Problem.
+    """
     def __init__(self):
 
         options = {Algorithm.GVNS: {
@@ -211,7 +233,8 @@ class MISP(ProblemDefinition):
 
         super().__init__(Problem.MISP, options)
 
-    def get_solution(self, instance_path):
+    def get_solution(self, instance_path) -> MISPSolution:
+        """ Creates a pymhlib MISP instance of the given file name and returns a pymhlib MISPSolution object initialized with this instance. """
         file_path = instance_path
         if instance_path.startswith('random'):
             file_path = "gnm" + instance_path[6:]
@@ -219,7 +242,8 @@ class MISP(ProblemDefinition):
         return MISPSolution(instance)
 
 
-    def get_instances(self, visualisation):
+    def get_instances(self, visualisation) -> List[str]:
+        """ Returns a list of available instance files for MISP, for algorithm visualisation the option 'random' is added."""
         inst = super().get_instances(visualisation)
         inst = [i for i in inst if i[-3:] == 'mis']
         if visualisation:
