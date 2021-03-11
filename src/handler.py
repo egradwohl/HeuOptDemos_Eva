@@ -118,9 +118,9 @@ def run_algorithm(config: Configuration, visualisation: bool=False):
 def init_gvns(solution, config: Configuration):
 
     prob = problems[config.problem]
-    ch = [ prob.get_method(Algorithm.GVNS, Option.CH, m[0], m[1]) for m in config.options[Option.CH] ]
-    li = [ prob.get_method(Algorithm.GVNS, Option.LI, m[0], m[1]) for m in config.options[Option.LI] ]
-    sh = [ prob.get_method(Algorithm.GVNS, Option.SH, m[0], m[1]) for m in config.options[Option.SH] ]
+    ch = [ prob.get_method(Algorithm.GVNS, Option.CH, m[0], m[1]) for m in config.options.get(Option.CH, []) ]
+    li = [ prob.get_method(Algorithm.GVNS, Option.LI, m[0], m[1]) for m in config.options.get(Option.LI, []) ]
+    sh = [ prob.get_method(Algorithm.GVNS, Option.SH, m[0], m[1]) for m in config.options.get(Option.SH, []) ]
     
     alg = GVNS(solution, ch, li, sh, consider_initial_sol=False)
     return alg

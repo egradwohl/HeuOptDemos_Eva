@@ -9,95 +9,184 @@ sys.path.append("C:/Users/Eva/Desktop/BakkArbeit/pymhlib")
 from pymhlib.demos.maxsat import MAXSATInstance, MAXSATSolution
 from pymhlib.demos.misp import MISPInstance, MISPSolution
 
-import networkx as nx
-import matplotlib.pyplot as plt
-import statistics        
-from IPython.display import display, display_html 
+import os
+import pandas as pd
+import time
+import matplotlib.pyplot as plt     
+from IPython.display import display
 import ipywidgets as widgets
+
 from . import handler
 from .problems import Problem, Algorithm, Option, InitSolution, Configuration
 from . import plotting as p
 from .plotting_runtime import PlotRuntime
 from .logdata import Log, LogData, RunData, save_visualisation, read_from_logfile, get_log_description
-from IPython.display import clear_output
-import os
-from matplotlib.lines import Line2D
-import pandas as pd
-from matplotlib import gridspec as gs
-import time
 
 
 
 
-def load_visualisation_settings():
 
-        interface = InterfaceVisualisation()
-        interface.display_main_selection()
+def load_visualisation_settings(d_min: float = 1.14):
+
+        interface = InterfaceVisualisation(True, d_min)
+        interface.display_interface()
 
 def load_runtime_settings():
 
         interface = InterfaceRuntimeAnalysis()
-        interface.display_widgets()
+        interface.display_interface()
 
 
 
 class InterfaceVisualisation():
 
-        def __init__(self,visualisation=True):
+        main_selection = widgets.Box()
+        general_settings = widgets.Accordion(selected_index=None)
+        problem_configuration = widgets.VBox()
+        output_controls = widgets.HBox()
+        run_button = widgets.Button(description='Run')
+        save_button = widgets.Button(description='Save')
+        output = widgets.Output()
+        plot_instance = None
+        log_data = None
+        configuration = Configuration(Problem.MAXSAT.value, Algorithm.GVNS.value,'')
 
-                self.problemWidget = widgets.Dropdown(
-                                        options = handler.get_problems(),
-                                        description = 'Problem'
-                                        )
-                self.algoWidget =  widgets.Dropdown(
-                                options = handler.get_algorithms(Problem(self.problemWidget.value)),
-                                description = 'Algorithm'
-                                )
-                
-                self.instanceWidget = widgets.Dropdown(
-                                options = handler.get_instances(Problem(self.problemWidget.value),visualisation),
-                                description = 'Instance'
-                                )
-                self.instanceBox = widgets.HBox([self.instanceWidget])
+        def __init__(self, visualisation=True, dmin: float = 0.14) -> None:
 
-                self.optionsWidget = widgets.VBox() #container which holds all options
+                self.general_settings.children = self.init_general_settings()
+                self.general_settings.set_title(0, 'General settings')
+                self.problem_configuration.children = self.init_problem_configuration(visualisation)
+                self.main_selection = self.init_main_selection()
+                self.run_button.on_click(self.on_click_run)
+                self.dmin = dmin
 
-                self.optionsHandles = {} #used to store references to relevant option widgets since they are wrapped in boxes
+        def display_interface(self):
+                display(self.main_selection)
+                display(self.general_settings)
+                display(self.problem_configuration)
+                display(self.run_button, self.save_button)
+                display(self.output_controls)
+                display(self.output)
 
-                self.log_data = None
 
-                self.plot_instance = None
-                self.out = widgets.Output()
-                self.settingsWidget = widgets.Accordion(selected_index=None)
+        def init_main_selection(self):
+                main_selection = widgets.RadioButtons(options=['load from log file', 'generate new run'])
+                logfile_selection = widgets.Dropdown(layout=widgets.Layout(display='None'))
+                logfile_description = widgets.Output()
 
-                def on_change_settings(change):
-                        if change.owner.description == 'seed' and change.new <0:
-                                change.owner.value = 0
-                        if (change.owner.description == 'iterations' or change.owner.description == 'runs') and change.new <1:
-                                change.owner.value = 1
+                def on_change_logfile_selection(change):
+                        with logfile_description:
+                                logfile_description.clear_output()
+                                print(get_log_description(logfile_selection.value))
+
+                def on_change_main_selection(change):
+                        self.output.clear_output()
+                        plt.close()
+                        self.output_controls.layout.visibility = 'hidden'
+                        logfile_description.clear_output()
+                        if change == None or change.new == 'load from log file':
+                                logfile_selection.options = os.listdir('logs' + os.path.sep + 'saved')
+                                logfile_selection.value = logfile_selection.options[0]
+                                self.run_button.disabled = not len(logfile_selection.options) > 0
+                                self.save_button.layout.visibility = 'hidden'
+                                self.problem_configuration.layout.display = self.general_settings.layout.display = 'None'
+                                logfile_selection.layout.display = 'flex'
+                                logfile_description.layout.display = 'flex'
+                                on_change_logfile_selection(None)
+                        else:
+                                logfile_description.layout.display = 'None'
+                                logfile_selection.layout.display = 'None'
+                                self.general_settings.children = self.init_general_settings()
+                                self.problem_configuration.children = self.init_problem_configuration(True)
+                                self.problem_configuration.layout.display = self.general_settings.layout.display = 'flex'
+                                self.run_button.disabled = False
+                                self.save_button.layout.visibility = 'visible'
+                                self.save_button.disabled = True
+                        
+                logfile_selection.observe(on_change_logfile_selection, names='value')
+                main_selection.observe(on_change_main_selection, names='value')
+                on_change_main_selection(None)
+                return widgets.VBox([main_selection, logfile_selection, logfile_description])
+
+
+        def init_general_settings(self):
+                self.general_settings.selected_index = None
                 seed = widgets.IntText(description='seed', value=0)
-                iterations = widgets.IntText(description='iterations', value=100)
+                iterations = widgets.IntText(description='iterations', value=50)
                 runs = widgets.IntText(description='runs',value=1,layout=widgets.Layout(display='None'))
                 use_runs = widgets.Checkbox(description='use saved runs',value=True,layout=widgets.Layout(display='None'))
-                seed.observe(on_change_settings,names='value')
-                iterations.observe(on_change_settings,names='value')
-                runs.observe(on_change_settings,names='value')
-                self.settingsWidget.children = (widgets.VBox([iterations,seed,runs,use_runs]),)
-                self.settingsWidget.set_title(0, 'General settings')
-                self.controls = self.init_controls()
 
-                self.controls.layout.visibility = 'hidden'
-                self.run_button =  widgets.Button(description = 'Run')
-                self.save_button = None
-                self.mainSelection = widgets.RadioButtons(options=['load from log file', 'generate new run'])
-                self.logfileWidget = widgets.Dropdown(layout=widgets.Layout(display='None'))
+                def on_change_seed(change):
+                        if change.new < 0:
+                                seed.value = 0
+                        self.configuration.seed = seed.value
+                def on_change_iterations(change):
+                        if change.new < 1:
+                                iterations.value = 1
+                        self.configuration.iterations = iterations.value
+                def on_change_runs(change):
+                        if change.new < 1:
+                                runs.value = 1
+                        self.configuration.runs = runs.value
+                def on_change_use_runs(change):
+                        self.configuration.use_runs = use_runs.value
+
+                seed.observe(on_change_seed,names='value')
+                iterations.observe(on_change_iterations,names='value')
+                runs.observe(on_change_runs,names='value')
+                use_runs.observe(on_change_use_runs, names='value')
+                return (widgets.VBox([iterations,seed,runs,use_runs]),) 
 
 
-        def init_controls(self):
-        
-                play = widgets.Play(interval=1000, value=0, min=0, max=100,
+        def init_problem_configuration(self, visualisation):
+                problem = widgets.Dropdown(options = handler.get_problems(), 
+                                                description = 'Problem')
+                instance = widgets.Dropdown(options = handler.get_instances(Problem(problem.value),visualisation),
+                                                description = 'Instance')
+                instance_box = widgets.HBox()
+
+                algorithm =  widgets.Dropdown(options = handler.get_algorithms(Problem(problem.value)),
+                                                description = 'Algorithm')
+                options = widgets.VBox()
+
+                def on_change_instance(change):
+                        if instance.value == 'random':
+                                n = widgets.IntText(value=30, description='n:',layout=widgets.Layout(width='150px'))
+                                m = widgets.IntText(value=50, description='m:',layout=widgets.Layout(width='150px'))
+                                def on_change_random(change):
+                                        self.configuration.instance = 'random-'+str(n.value)+'-'+str(m.value)
+                                n.observe(on_change_random)
+                                m.observe(on_change_random)
+                                instance_box.children = (instance,n,m)
+                                on_change_random(None)
+                        else:
+                                instance_box.children = (instance,)
+                                self.configuration.instance = instance.value
+
+                def on_change_algorithm(change):
+                        self.configuration.algorithm = Algorithm(algorithm.value)
+                        self.configuration.options = {}
+                        options.children = self.get_options(Problem(problem.value), Algorithm(algorithm.value))
+
+                def on_change_problem(change):
+                        algorithm.options = handler.get_algorithms(Problem(problem.value))
+                        instance.options = handler.get_instances(Problem(problem.value),visualisation)
+                        self.configuration.problem = Problem(problem.value)
+                        on_change_instance(None)
+                        on_change_algorithm(None)
+
+                instance.observe(on_change_instance, names='value')
+                algorithm.observe(on_change_algorithm, names='value')
+                problem.observe(on_change_problem, names='value')
+                on_change_problem(None)
+                return (problem, instance_box, algorithm, options)
+
+
+        def init_output_controls(self):
+                self.output_controls.layout.visibility = 'hidden'
+                play = widgets.Play(interval=1000, value=0, min=0, max=len(self.log_data.log_data)-1,
                         step=1, description="Press play")
-                slider = widgets.IntSlider(value=0, min=0, max=100,
+                slider = widgets.IntSlider(value=0, min=0, max=len(self.log_data.log_data)-1,
                         step=1, orientation='horizontal',)
 
                 def click_prev(event):
@@ -110,206 +199,105 @@ class InterfaceVisualisation():
                 next_iter = widgets.Button(description='',icon='step-forward', tooltip='next', layout=widgets.Layout(width='50px'))
                 prev_iter.on_click(click_prev)
                 next_iter.on_click(click_next)
+
                 log_granularity = widgets.Dropdown(description='Log granularity', options=[l.value for l in Log])
-                log_granularity.observe(self.on_change_log_granularity, names='value')
+                log_granularity.value = Log.StepInter.value
+
+                def on_change_log_granularity(change):
+                        next_iter = self.log_data.change_granularity(slider.value, Log(log_granularity.value))
+                        self.plot_instance.log_granularity = self.log_data.current_level
+                        #set max,min,value of slider and controls to appropriate iteration number
+                        play.max = slider.max = len(self.log_data.log_data) - 1
+                        slider.value = next_iter
+                        self.animate(None)
+
+                log_granularity.observe(on_change_log_granularity, names='value')
                 widgets.jslink((play, 'value'), (slider, 'value'))
+
                 slider.observe(self.animate, names = 'value')
 
-                return widgets.HBox([play, slider, prev_iter, next_iter, log_granularity])
-
-        def on_change_log_granularity(self, change):
-                next_iter = self.log_data.change_granularity(self.controls.children[1].value, Log(self.controls.children[4].value))
-                self.plot_instance.log_granularity = self.log_data.current_level
-                #set max,min,value of slider and controls to appropriate iteration number
-                self.controls.children[0].max = self.controls.children[1].max = len(self.log_data.log_data) - 1
-                self.controls.children[1].value = next_iter
-                self.animate(None)
+                return (play, slider, prev_iter, next_iter, log_granularity)
 
 
+        def on_click_run(self, event):
 
-        def animate(self,event):
-                with self.out:
-                        #p.get_animation(self.controls.children[1].value, self.log_data.log_data, self.plot_instance)
-                        self.plot_instance.get_animation(self.controls.children[1].value, self.log_data.log_data)
-                        widgets.interaction.show_inline_matplotlib_plots()
-                
-        def on_change_problem(self, change):
-
-                self.algoWidget.options = handler.get_algorithms(Problem(change.new))
-                self.optionsWidget.children = self.get_options(Algorithm(self.algoWidget.value))
-                self.instanceWidget.options = handler.get_instances(Problem(change.new), not isinstance(self, InterfaceRuntimeAnalysis))
-                self.optionsHandles = {}
-                self.on_change_algo(None)
-
-
-    
-        def on_change_algo(self, change):
-
-                self.optionsHandles = {} #reset references
-                self.optionsWidget.children = self.get_options(Algorithm(self.algoWidget.value))
-
-
-        def run_visualisation(self, event):
-                params = None
                 log_data = list()
-                if self.mainSelection.value == 'load from log file':
-                        log_data, instance = read_from_logfile(self.logfileWidget.value)
-                        params = Configuration(Problem[log_data[0]].value, Algorithm[log_data[1]].value, '')
+                if self.main_selection.children[0].value == 'load from log file':
+                        log_data, instance = read_from_logfile(self.main_selection.children[1].value)
+                        self.configuration.problem = Problem[log_data[0]]
+                        self.configuration.algorithm = Algorithm[log_data[1]]
                         log_data = log_data[2:]
                         
                 else:
-                        params = self.prepare_parameters()
-                        # starts call to pymhlib in handler module
-                        log_data, instance = handler.run_algorithm_visualisation(params)
+                        log_data, instance = handler.run_algorithm_visualisation(self.configuration)
 
-                self.log_data = LogData(params.problem, params.algorithm,log_data)
+                self.log_data = LogData(self.configuration.problem, self.configuration.algorithm,log_data)
 
                 # initialize graph from instance
-                with self.out:
-                        self.out.clear_output()
-                        self.plot_instance = p.get_visualisation(params.problem,params.algorithm, instance, self.log_data.current_level)
+                with self.output:
+                        self.output.clear_output()
+                        self.plot_instance = p.get_visualisation(self.configuration.problem, self.configuration.algorithm, instance, self.log_data.current_level, self.dmin)
                         widgets.interaction.show_inline_matplotlib_plots()
 
-                self.controls.children[1].value = 0
-                self.controls.children[0].max = self.controls.children[1].max = len(self.log_data.log_data) -1
-                self.controls.children[4].value = Log.StepInter.value
+
+                self.output_controls.children = self.init_output_controls()
+                self.output_controls.layout.visibility = 'visible'
+
+                # copy configuration to make sure correct configuration is saved
+                to_save = self.configuration.make_copy()
+                def on_click_save(event):
+                        save_visualisation(to_save, self.plot_instance.graph)
+                        self.save_button.disabled = True
+
+                self.save_button.on_click(on_click_save)
+                self.save_button.disabled = False
 
                 # start drawing
                 self.animate(None)
-                self.controls.layout.visibility = 'visible'
-                self.save_button.disabled = self.mainSelection.value == 'load from log file' 
 
-        def prepare_parameters(self):
+        def animate(self,event):
+                with self.output:
+                        self.plot_instance.get_animation(self.output_controls.children[1].value, self.log_data.log_data)
+                        widgets.interaction.show_inline_matplotlib_plots()
 
-                instance = '-'.join([str(c.value) for c in self.instanceBox.children])
-                params = Configuration(self.problemWidget.value, self.algoWidget.value, instance)
-
-                # extend if further options are needed
-                if Option.CH in self.optionsHandles:
-                        params.options[Option.CH] = [(self.optionsHandles.get(Option.CH).value, InitSolution[self.optionsHandles.get(Option.CH).value].value)]
-                if Option.LI in self.optionsHandles:
-                        #TODO: make sure name splitting works if no 'k=' given (ok for now because k is always added)
-                        params.options[Option.LI] = [(name.split(',')[0], int(name.split('=')[1])) for name in list(self.optionsHandles.get(Option.LI).options)]
-                if Option.SH in self.optionsHandles:
-                        params.options[Option.SH] = [(name.split(',')[0], int(name.split('=')[1])) for name in list(self.optionsHandles.get(Option.SH).options)]
-                if Option.RGC in self.optionsHandles:
-                        params.options[Option.RGC] = [(self.optionsHandles[Option.RGC].children[0].value,self.optionsHandles[Option.RGC].children[1].value)]
-                if Option.TL in self.optionsHandles:
-                        params.options[Option.TL] = [(o.description,o.value) for o in self.optionsHandles[Option.TL].children[1:]]
-                # add settings params
-                params.iterations = self.settingsWidget.children[0].children[0].value
-                params.seed = self.settingsWidget.children[0].children[1].value
-                if params.instance.startswith('random') and params.seed > 0 :
-                        params.instance += f'-{params.seed}'
-
-                return params
-
-
-        def display_main_selection(self):
-
-                options_box = self.display_widgets()
-                options_box.layout.display = 'None'
-                log_description = widgets.Output()
-
-                def on_change_logfile(change):
-                        with log_description:
-                                log_description.clear_output()
-                                print(get_log_description(change['new']))
-
-                self.logfileWidget.observe(on_change_logfile, names='value')
-
-                def on_change_main(change):
-                        self.out.clear_output()
-                        plt.close()
-                        self.controls.layout.visibility = 'hidden'
-                        if change['new'] == 'load from log file':
-                                self.logfileWidget.options = os.listdir('logs' + os.path.sep + 'saved')
-                                self.run_button.disabled = not len(self.logfileWidget.options) > 0
-                                self.logfileWidget.layout.display = 'flex'
-                                log_description.layout.display = 'flex'
-                                options_box.layout.display = 'None'
-
-                        else: 
-                                self.run_button.disabled = False
-                                self.logfileWidget.layout.display = 'None'
-                                log_description.layout.display = 'None'
-                                options_box.layout.display = 'flex'
-
-
-                self.mainSelection.observe(on_change_main, names='value')
-                self.run_button.on_click(self.run_visualisation)
-                display(self.mainSelection)
-                on_change_main({'new': 'load from log file'})
-                display(widgets.VBox([self.logfileWidget,log_description]))
-                display(options_box)
-                display(widgets.VBox([self.run_button, self.controls, self.out]))
-
-
-        def display_widgets(self):
-
-                self.problemWidget.observe(self.on_change_problem, names='value')
-                self.instanceWidget.observe(self.on_change_instance, names='value')
-                self.algoWidget.observe(self.on_change_algo, names='value')
-                self.optionsWidget.children = self.get_options(Algorithm(self.algoWidget.value))
-
-
-                self.save_button = widgets.Button(description='Save Visualisation', disabled=True)
-                self.save_button.on_click(self.on_click_save)
-                optionsBox = widgets.VBox([self.settingsWidget, self.problemWidget,self.instanceBox,self.algoWidget,self.optionsWidget])
-                return widgets.VBox([optionsBox, self.save_button])
-
-        def on_click_save(self,event):
-                #TODO make sure params were not changed!!!!
-                save_visualisation(self.prepare_parameters(), self.plot_instance.graph)
-                self.save_button.disabled = True
-
-
-        def on_change_instance(self,change):
-                if change.new == 'random':
-                        n = widgets.IntText(value=30, description='n:',layout=widgets.Layout(width='150px'))
-                        m = widgets.IntText(value=50, description='m:',layout=widgets.Layout(width='150px'))
-                        self.instanceBox.children = (self.instanceWidget,n,m)
-                else:
-                        self.instanceBox.children = (self.instanceWidget,)
-
-                
-        def get_options(self, algo: Algorithm):
-
-                options = handler.get_options(Problem(self.problemWidget.value), algo)
+     
+        def get_options(self, problem: Problem, algo: Algorithm):
 
                 # create options widgets for selected algorithm
                 if algo == Algorithm.GVNS:
-                        return self.get_gvns_options(options)
+                        return self.get_gvns_options(problem, algo)
                 if algo == Algorithm.GRASP:
-                        return self.get_grasp_options(options)
+                        return self.get_grasp_options(problem, algo)
                 if algo == Algorithm.TS:
-                        return self.get_ts_options(options)
+                        return self.get_ts_options(problem, algo)
                 return ()
 
 
         # define option widgets for each algorithm
-        def get_gvns_options(self, options: dict):
-
+        def get_gvns_options(self, problem: Problem, algo: Algorithm):
+                options = handler.get_options(problem, algo)
                 ch = widgets.Dropdown( options = [m[0] for m in options[Option.CH]],
                                 description = Option.CH.value)
                 ch_box = widgets.VBox([ch])
-                self.optionsHandles[Option.CH] = ch
+                def on_change_ch(change):
+                        self.configuration.options.update( {Option.CH: [(ch.value, InitSolution[ch.value].value)]})
+                on_change_ch(None)
+                ch.observe(on_change_ch)
 
-                li_box = self.get_neighborhood_options(options, Option.LI)
-                sh_box = self.get_neighborhood_options(options, Option.SH)
+                li_box = self.get_neighborhood_options(options, Option.LI, problem, algo)
+                sh_box = self.get_neighborhood_options(options, Option.SH, problem, algo)
 
                 return (ch_box,li_box,sh_box)
 
 
-        def get_grasp_options(self, options: dict):
-
-                li_box = self.get_neighborhood_options(options, Option.LI)
+        def get_grasp_options(self, problem: Problem, algo: Algorithm):
+                options = handler.get_options(problem, algo)
+                li_box = self.get_neighborhood_options(options, Option.LI, problem, algo)
                 rcl = widgets.RadioButtons(options=[m[0] for m in options[Option.RGC]],
                                                 description=Option.RGC.value)
                 k_best = widgets.IntText(value=1,description='k:',layout=widgets.Layout(width='150px', display='None'))
                 alpha = widgets.FloatSlider(value=0.85, description='alpha:',step=0.05,layout=widgets.Layout(display='None'), orientation='horizontal', min=0, max=1)
 
-                param = widgets.HBox([k_best,alpha])
                 rcl_box = widgets.VBox()
 
                 def set_param(change):
@@ -317,38 +305,50 @@ class InterfaceVisualisation():
                                 k_best.layout.display = 'flex'
                                 alpha.layout.display = 'None'
                                 rcl_box.children = (rcl,k_best)
+                                self.configuration.options.update( {Option.RGC: [('k-best',k_best.value)]})
                         if change['new'] == 'alpha':
                                 k_best.layout.display = 'None'
                                 alpha.layout.display = 'flex'
                                 rcl_box.children = (rcl,alpha)
+                                self.configuration.options.update( {Option.RGC: [('alpha',alpha.value)]})
                 def on_change_k(change):
                         if change.new < 1:
                                 change.owner.value = 1
+                        self.configuration.options.update( {Option.RGC: [('k-best',k_best.value)]})
+                def on_change_alpha(change):
+                        self.configuration.options.update( {Option.RGC: [('alpha',alpha.value)]})
 
                 k_best.observe(on_change_k, names='value')
-
+                alpha.observe(on_change_alpha, names='value')
                 rcl.observe(set_param, names='value')
-                self.optionsHandles[Option.RGC] = rcl_box
                 set_param({'new':rcl.value})
 
                 return (li_box,rcl_box)
 
-        def get_ts_options(self, options: dict):
-
+        def get_ts_options(self, problem: Problem, algo: Algorithm):
+                options = handler.get_options(problem, algo)
                 ch = widgets.Dropdown( options = [m[0] for m in options[Option.CH]],
                         description = Option.CH.value)
-                self.optionsHandles[Option.CH] = ch
+
                 ch_box = widgets.VBox([ch])
-                li_box = self.get_neighborhood_options(options, Option.LI)
+                def on_change_ch(change):
+                        self.configuration.options.update( {Option.CH: [(ch.value, InitSolution[ch.value].value)]})
+                on_change_ch(None)
+                ch.observe(on_change_ch)
+                li_box = self.get_neighborhood_options(options, Option.LI, problem, algo)
                 min_ll = widgets.IntText(value=5,description='min length', layout=widgets.Layout(width='150px'), disabled=True)
                 max_ll = widgets.IntText(value=5,description='max length', layout=widgets.Layout(width='150px'))
                 iter_ll = widgets.IntText(value=0,description='change (iteration)', layout=widgets.Layout(width='150px'))
-                
+
+                def set_tl_options():
+                        self.configuration.options.update( {Option.TL: [(o.description, o.value) for o in [min_ll, max_ll, iter_ll]]})
+
                 def on_change_min(change):
                         if change.new > max_ll.value:
                                 min_ll.value = max_ll.value
                         if change.new <= 0:
                                 min_ll.value = 1
+                        set_tl_options()
                 def on_change_max(change):
                         if change.new < min_ll.value and iter_ll.value > 0:
                                 max_ll.value = min_ll.value
@@ -356,6 +356,7 @@ class InterfaceVisualisation():
                                 max_ll.value = 1
                         if iter_ll.value == 0:
                                 min_ll.value = max_ll.value
+                        set_tl_options()
                 def on_change_iter(change):
                         if change.new < 0:
                                 iter_ll.value = 0
@@ -364,33 +365,32 @@ class InterfaceVisualisation():
                         if change.new == 0:
                                 min_ll.value = max_ll.value
                                 min_ll.disabled = True
-                
+                        set_tl_options()
 
+                
                 min_ll.observe(on_change_min, names='value')
                 max_ll.observe(on_change_max, names='value')
                 iter_ll.observe(on_change_iter, names='value')
                 label = widgets.Label(value='Tabu List')
                 ll_box = widgets.HBox([label,min_ll,max_ll,iter_ll])
-                self.optionsHandles[Option.TL] = ll_box
-
+                set_tl_options()
                 return (ch_box,li_box,ll_box)
 
         # helper functions to create widget box for li/sh neighborhoods
-        def get_neighborhood_options(self, options: dict, phase: Option):
+        def get_neighborhood_options(self, options: dict, phase: Option, problem: Problem, algo: Algorithm):
                 available = widgets.Dropdown(
                                 options = [m[0] for m in options[phase]],
                                 description = phase.value
                 )
 
-
                 size = widgets.IntText(value=1,description='k: ',layout=widgets.Layout(width='150px'))
-                add = widgets.Button(description='',icon='chevron-right',layout=widgets.Layout(width='60px'), tooltip='add ' + phase.name)
-                remove = widgets.Button(description='',icon='chevron-left',layout=widgets.Layout(width='60px'), tooltip='remove ' + phase.name)
-                up = widgets.Button(description='',icon='chevron-up',layout=widgets.Layout(width='30px'), tooltip='up ' + phase.name)
-                down = widgets.Button(description='',icon='chevron-down',layout=widgets.Layout(width='30px'), tooltip='down ' + phase.name)
+                add = widgets.Button(description='',icon='chevron-right',layout=widgets.Layout(width='60px'), tooltip='add')
+                remove = widgets.Button(description='',icon='chevron-left',layout=widgets.Layout(width='60px'), tooltip='remove')
+                up = widgets.Button(description='',icon='chevron-up',layout=widgets.Layout(width='30px'), tooltip='up')
+                down = widgets.Button(description='',icon='chevron-down',layout=widgets.Layout(width='30px'), tooltip='down')
                 
                 def on_change_available(event):
-                        opt = handler.get_options(Problem(self.problemWidget.value),Algorithm(self.algoWidget.value))
+                        opt = handler.get_options(problem,algo)
                         opt = [o for o in opt.get(phase) if o[0]==available.value][0]
                         size.value = 1 if opt[1] == None or type(opt[1]) == type else opt[1]
                         size.disabled = type(opt[1]) != type or opt[1] == None
@@ -408,131 +408,100 @@ class InterfaceVisualisation():
                                 description = 'Selected'
                 )
 
-                self.optionsHandles[phase] = selected
+                def on_click_nh(event):
+                        if event.tooltip == 'add':
+                                selected.options += (available.value + ', k=' + str(size.value),)
+                        if event.tooltip == 'remove':
+                                if len(selected.options) == 0:
+                                        return
+                                to_remove = selected.index
+                                options = list(selected.options)
+                                del options[to_remove]
+                                selected.options = tuple(options)
+                        if event.tooltip == 'up':
+                                if len(selected.options) == 0 or selected.index == 0:
+                                        return
+                                to_up = selected.index
+                                options = list(selected.options)
+                                options[to_up -1], options[to_up] = options[to_up], options[to_up-1]
+                                selected.options = tuple(options)
+                                selected.index = to_up -1
+                        if event.tooltip == 'down':
+                                if len(selected.options) == 0 or selected.index == len(selected.options) - 1:
+                                        return
+                                to_down = selected.index
+                                options = list(selected.options)
+                                options[to_down +1], options[to_down] = options[to_down], options[to_down+1]
+                                selected.options = tuple(options)
+                                selected.index = to_down +1
 
-                add.on_click(self.on_add_neighborhood)
-                remove.on_click(self.on_remove_neighborhood)
-                up.on_click(self.on_up_neighborhood)
-                down.on_click(self.on_down_neighborhood)
+                add.on_click(on_click_nh)
+                remove.on_click(on_click_nh)
+                up.on_click(on_click_nh)
+                down.on_click(on_click_nh)
 
+                def on_change_selected(change):
+                        self.configuration.options.update( {phase: [(name.split(',')[0], int(name.split('=')[1])) for name in list(selected.options)]} )
+                selected.observe(on_change_selected)
+                on_change_selected(None)
                 middle = widgets.Box([size, add, remove],layout=widgets.Layout(display='flex',flex_flow='column',align_items='flex-end'))
                 sort = widgets.VBox([up,down])
                 
                 return widgets.HBox([available,middle,selected,sort])        
 
-                
-        def on_add_neighborhood(self,event):
-                phase = event.tooltip.split(' ')[1]
-                descr = dict(Option.__members__.items()).get(phase).value
-                n_block = [c for c in self.optionsWidget.children if c.children[0].description == descr][0]
-                selected = n_block.children[2]
-                size = n_block.children[1].children[0].value
-                sel = n_block.children[0].value
-                selected.options += (f'{sel}, k={max(1,size)}',)
-                selected.index = len(selected.options) -1
-
-
-        def on_remove_neighborhood(self,event):
-                selected = self.get_selected_nh(event)
-                
-                if len(selected.options) == 0:
-                        return
-
-                to_remove = selected.index
-                options = list(selected.options)
-                del options[to_remove]
-                selected.options = tuple(options)
-
-        def on_up_neighborhood(self,event):
-                selected = self.get_selected_nh(event)
-
-                if len(selected.options) == 0:
-                        return
-
-                to_up = selected.index
-                if to_up == 0:
-                        return
-                options = list(selected.options)
-                options[to_up -1], options[to_up] = options[to_up], options[to_up-1]
-                selected.options = tuple(options)
-                selected.index = to_up -1
-
-        def on_down_neighborhood(self,event):
-                selected = self.get_selected_nh(event)
-
-                if len(selected.options) == 0:
-                        return
-
-                to_down = selected.index
-                if to_down == (len(selected.options) - 1):
-                        return
-                options = list(selected.options)
-                options[to_down +1], options[to_down] = options[to_down], options[to_down+1]
-                selected.options = tuple(options)
-                selected.index = to_down +1
-
-        def get_selected_nh(self, event):
-                phase = event.tooltip.split(' ')[1]
-                descr = dict(Option.__members__.items()).get(phase).value
-                n_block = [c for c in self.optionsWidget.children if c.children[0].description == descr][0]
-                return n_block.children[2]
-                
-                        
 
 
 
 class InterfaceRuntimeAnalysis(InterfaceVisualisation):
 
-        def __init__(self):
-                super().__init__(visualisation=False)
-                self.configurations = {}
-                self.out = widgets.Output()
-                self.line_checkboxes = widgets.VBox()
+
+        def __init__(self, visualisation=False) -> None:
+                super().__init__(visualisation)
+                self.main_selection.layout.display = None
+                self.reset_general_settings()
+                self.problem_configuration.layout.display = 'flex'
                 self.run_button.description = 'Run configuration'
-                self.iter_slider = widgets.IntSlider(layout=widgets.Layout(padding="2em 0 0 0"),description='iteration', value=1, min=1)
-                self.plot_options = None
+
+                self.save_button.description = 'Save selected runs'
+                self.save_button.layout = widgets.Layout(width='150px',justify_self='end')
+                self.save_button.on_click(self.save_runs)
+
+                self.reset_button = widgets.Button(description='Reset', icon='close',layout=widgets.Layout(width='100px',justify_self='end'))
+                self.reset_button.on_click(self.on_click_reset)
+
+                self.configurations = {}
+                self.line_checkboxes = widgets.VBox()
+                self.plot_options = self.init_plot_options()
+
                 self.plot_instance = PlotRuntime()
                 self.run_data = RunData()
 
+        def reset_general_settings(self):
+                self.general_settings.layout.display = 'flex'
+                settings = self.general_settings.children[0]
+                settings.layout.display = 'flex'
+                settings.children[2].layout.display = settings.children[3].layout.display = 'flex'
+                settings.children[0].value = 100
+                settings.children[2].value = 5
+                settings.children[1].value = 0
+                settings.children[3].value = True
 
-        def display_widgets(self):
+        def display_interface(self):
+                display(self.general_settings)
+                display(self.problem_configuration)
+                display(self.run_button)
+                display(self.line_checkboxes)
+                display(widgets.HBox([self.save_button,self.reset_button]))
+                display(self.plot_options)
+                display(self.output)
 
-                self.problemWidget.observe(self.on_change_problem, names='value')
-                self.algoWidget.observe(self.on_change_algo, names='value')
-                self.optionsWidget.children = self.get_options(Algorithm(self.algoWidget.value))
-                self.run_button.on_click(self.run)
-                self.settingsWidget.children[0].children[2].value = 5
-                self.settingsWidget.children[0].children[2].layout.display = 'flex'
-                self.settingsWidget.children[0].children[3].layout.display = 'flex'
-                self.settingsWidget.children[0].children[0].value = 100
-                reset = widgets.Button(description='Reset', icon='close',layout=widgets.Layout(width='100px',justify_self='end'))
-                save_selected = widgets.Button(description='Save selected runs',layout=widgets.Layout(width='150px',justify_self='end'))
-
-                def on_reset(event):
-                        self.settingsWidget.children[0].children[0].value = 100
-                        self.settingsWidget.children[0].children[1].value = 0
-                        self.settingsWidget.children[0].children[2].value = 5
-                        self.configurations = {}
-                        for widget in [self.problemWidget,self.instanceWidget,self.settingsWidget.children[0].children[0]]:
-                                widget.disabled = False
-
-                        self.on_change_algo(None)
-                        self.out.clear_output()
-                        plt.close()
-                        self.line_checkboxes.children = []
-                        self.plot_options.layout.visibility = 'hidden'
-                        self.run_data.reset()
-                        self.plot_instance.problem = None
-
+        def init_plot_options(self):
 
                 sum_radiobuttons = widgets.RadioButtons(options=[], layout=widgets.Layout(width='auto', grid_area='sum'))
-
                 solutions = widgets.RadioButtons(options=['best solutions','current solutions'], layout=widgets.Layout(width='auto', grid_area='sol'))
-
-
-                self.iter_slider.layout.grid_area='iter'
-                self.iter_slider.indent = False
-                self.plot_options = widgets.GridBox(children=[solutions, self.iter_slider, sum_radiobuttons], 
+                iter_slider = widgets.IntSlider(layout=widgets.Layout(padding="2em 0 0 0", grid_area='iter'), description='iteration', value=1, min=1)
+                iter_slider.indent = False
+                plot_options = widgets.GridBox(children=[solutions, iter_slider, sum_radiobuttons], 
                                         layout=widgets.Layout(
                                                 padding='1em',
                                                 border='solid black 1px',
@@ -547,55 +516,71 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                                                 " iter iter iter sum"
                                                 '''))
                 checkboxes = []
+
+                def on_change_cb(change):
+                        iter_slider.value = self.get_best_idx()
+                        self.plot_comparison(iter_slider.value)
+
                 for o in ['max','min','polygon','median','mean','best']:
-                        checkboxes.append(self.init_checkbox(o))
-                        checkboxes[-1].value = True if o in ['median', 'polygon'] else False
-                        checkboxes[-1].layout = widgets.Layout(width='auto', grid_area=o)
-                        checkboxes[-1].indent= False
+                        cb =  widgets.Checkbox(description=o, layout = widgets.Layout(width='auto', grid_area=o))
+                        cb.value = True if o in ['median', 'polygon'] else False
+                        cb.indent= False
+                        cb.observe(on_change_cb, names='value')
+                        checkboxes.append(cb)
 
-                self.plot_options.children += tuple(checkboxes)
+
+                plot_options.children += tuple(checkboxes)
+
                 def on_change_iter(change):
-                        i = change.new if change.new > 0 else 1
-                        self.plot_comparison(i)
+                        self.plot_comparison(change.new if change.new > 0 else 1)
 
-                self.iter_slider.observe(on_change_iter,names='value')
+                iter_slider.observe(on_change_iter, names='value')
 
                 def on_change_plotoptions(change):
-                        self.plot_comparison(self.iter_slider.value)
+                        self.plot_comparison(iter_slider.value)
 
                 solutions.observe(on_change_plotoptions,names='value')
                 sum_radiobuttons.observe(on_change_plotoptions,names='value')
-                reset.on_click(on_reset)
-                save_selected.on_click(self.save_runs)
+                return plot_options
 
+        
 
-                display(widgets.VBox([self.settingsWidget,self.problemWidget,self.instanceWidget,self.algoWidget,self.optionsWidget,
-                        self.run_button, self.line_checkboxes, widgets.HBox([save_selected,reset])]))
-                display(self.plot_options)
-                display(self.out)
-                on_reset(None)
-
-                
         def init_checkbox(self,name: str):
+                
                 def on_change(change):
-                        self.iter_slider.value = self.get_best_idx()
-                        self.plot_comparison(self.iter_slider.value)
+                        iter_slider =  next((widget for widget in self.plot_options.children if widget.layout.grid_area == 'iter'), None)
+                        iter_slider.value = self.get_best_idx()
+                        self.plot_comparison(iter_slider.value)
                         
                 cb = widgets.Checkbox(description=name, value=True)
                 cb.observe(on_change,names='value')
                 return cb
 
 
-        def run(self, event):
+        def on_click_reset(self, event):
+                self.reset_general_settings()
+                self.configurations = {}
+                for widget in [self.problem_configuration.children[0],self.problem_configuration.children[1],self.general_settings.children[0].children[0]]:
+                        widget.disabled = False
+
+                self.problem_configuration.children = self.init_problem_configuration(False)
+                self.output.clear_output()
+                plt.close()
+                self.line_checkboxes.children = []
+                self.plot_options.layout.visibility = 'hidden'
+                self.run_data.reset()
+                self.plot_instance.problem = None
+
+        def on_click_run(self, event):
                 text = widgets.Label(value='running...')
                 display(text)
                 # disable prob + inst + iteration + run button
-                self.problemWidget.disabled = self.instanceWidget.disabled = True
-                self.settingsWidget.children[0].children[0].disabled = True
+                self.problem_configuration.children[0].disabled = self.problem_configuration.children[1].disabled = True
+                self.general_settings.children[0].children[0].disabled = True
                 self.run_button.disabled = True
 
                 # prepare params and name, save params in dict of configurations
-                params = self.prepare_parameters()
+                params = self.prepare_and_save_configuration()
 
                 # run algorithm with params or load data from file
                 log_df,summary = self.load_datafile_or_run_algorithm(params)
@@ -605,17 +590,18 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
 
                 self.run_data.iteration_df = pd.concat([self.run_data.iteration_df,log_df], axis=1)
                 self.run_data.summaries[params.name] = summary
-                self.plot_instance.problem = Problem(self.problemWidget.value)
+                self.plot_instance.problem = params.problem
 
                 # add name to checkbox list
                 self.line_checkboxes.children +=(self.init_checkbox(params.name),)
                 self.plot_options.layout.visibility = 'visible'
 
                 # plot checked data
-                self.iter_slider.value = self.get_best_idx()
-                self.iter_slider.max = len(self.run_data.iteration_df)
+                iter_slider =  next((widget for widget in self.plot_options.children if widget.layout.grid_area == 'iter'), None)
+                iter_slider.value = self.get_best_idx()
+                iter_slider.max = len(self.run_data.iteration_df)
 
-                self.plot_comparison(self.iter_slider.value)
+                self.plot_comparison(iter_slider.value)
 
 
         def get_best_idx(self):
@@ -624,38 +610,34 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                         return 1
                 df = self.run_data.iteration_df[checked]
                 m = 1
-                if Problem(self.problemWidget.value) in [Problem.MAXSAT,Problem.MISP]:
+                if Problem(self.problem_configuration.children[0].value) in [Problem.MAXSAT,Problem.MISP]:
                         m = df.max().max()
                 else:
                         m = df.min().min()
                 return df.loc[df.isin([m]).any(axis=1)].index.min()
 
-
-        def prepare_parameters(self):
-                params = super().prepare_parameters()
-                params.runs = self.settingsWidget.children[0].children[2].value
-                params.use_runs = self.settingsWidget.children[0].children[3].value
-                name = [f'{params.algorithm.name.lower()}']
-                for k,v in params.options.items():
+        
+        def prepare_and_save_configuration(self):
+                config = self.configuration.make_copy()
+                name = [f'{config.algorithm.name.lower()}']
+                for k,v in config.options.items():
                         if not type(k) == Option or len(v) == 0:
                                 continue
                         o = k.name.lower()+ '-' + '-'.join([str(p[1]) for p in v])
                         o = o.replace('.','')
                         name += [o]
-
-                count = len(self.line_checkboxes.children) + 1
-                params.name = str(count) + '. ' + '_'.join(name)
-                self.configurations[params.name] = params
-                return params
-
+                count = len(self.line_checkboxes.children) + 1 
+                config.name = str(count) + '. ' + '_'.join(name)
+                self.configurations[config.name] = config
+                return config
 
         def plot_comparison(self, i):
                 stats = self.run_data.get_stat_options()
                 self.plot_options.children[2].options = stats
-                with self.out:
+                with self.output:
                         checked = [c.description for c in self.line_checkboxes.children if c.value]
                         if checked == []:
-                                self.out.clear_output()
+                                self.output.clear_output()
                                 plt.close()
                                 return
                         selected_iter_data = self.run_data.iteration_df[checked]
@@ -735,7 +717,7 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
 
         def configuration_exists_in_saved(self, name: str, description: str):
                 description = description[description.find('D '):]
-                path = 'logs'+ os.path.sep + 'saved_runtime' + os.path.sep + Problem(self.problemWidget.value).name.lower()
+                path = 'logs'+ os.path.sep + 'saved_runtime' + os.path.sep + Problem(self.problem_configuration.children[0].value).name.lower()
                 log_files = os.listdir(path)
                 for l in log_files:
                         n = l[l.find('i'):]
@@ -766,25 +748,3 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                                 s += f'D {o.name}{i}\n'
 
                 return s.strip()
-
-
-
-
-
-
-
-                
-
-
-        
-        
-
-
-
-        
-        
-
-
-
-
-    

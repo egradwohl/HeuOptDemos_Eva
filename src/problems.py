@@ -78,8 +78,8 @@ class Configuration():
         - use_runs: True if previously saved runs should be loaded
         - saved_runs: a list of run-numbers which have been saved to a file
     """
-    def __init__(self, problem: str, algorithm: str, instance: str, options: dict=None, runs: int=1, 
-                    iterations: int=100, seed: int=0, use_runs: bool=False, saved_runs: list=None, name: str=''):
+    def __init__(self, problem: str, algorithm: str, instance: str='', options: dict=None, runs: int=1, 
+                    iterations: int=50, seed: int=0, use_runs: bool=True, saved_runs: list=None, name: str=''):
         self.name = name
         self.problem = Problem(problem)
         self.algorithm = Algorithm(algorithm)
@@ -98,6 +98,11 @@ class Configuration():
             return vis_data_path + self.instance
         return demo_data_path + self.instance
 
+    def make_copy(self):
+        copy = Configuration(self.problem, self.algorithm, self.instance, runs=self.runs, iterations=self.iterations, seed=self.seed, use_runs=self.use_runs, name=self.name)
+        copy.options = {k: [i for i in v] if type(v) == list else v for k,v in self.options.items()}
+        copy.saved_runs = [s for s in self.saved_runs]
+        return copy
 
 
 class ProblemDefinition(ABC):

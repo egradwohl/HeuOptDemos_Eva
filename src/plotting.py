@@ -28,7 +28,6 @@ plt.rcParams['figure.autolayout'] = True
 plt.rcParams['axes.facecolor'] = 'w'
 pc_dir = 'pseudocode'
 pc_img_type = '.png'
-D_MIN = 0.14
 
 
 @dataclass
@@ -67,9 +66,10 @@ class Draw(ABC):
         yellow = 'gold'
         orange = 'darkorange'
 
-        def __init__(self, prob: Problem, alg: Algorithm, instance, log_granularity: Log):
+        def __init__(self, prob: Problem, alg: Algorithm, instance, log_granularity: Log, dmin: float):
                 self.problem = prob
                 self.algorithm = alg
+                self.dmin = dmin
                 self.graph = self.init_graph(instance)
                 self.log_granularity = log_granularity
                 self.pc_imgs = self.load_pc_img_files()
@@ -84,6 +84,7 @@ class Draw(ABC):
                 self.img_ax.axis('off')
                 self.ax.axis('off')
                 self.descr_ax.axis('off')
+
 
 
 
@@ -251,10 +252,10 @@ class Draw(ABC):
                                                 continue
                                         dist = np.linalg.norm(point1 - point2)
                                         dist = max(dist, 0.0001)
-                                        if dist < D_MIN:
+                                        if dist < self.dmin:
                                                 in_place = False
                                                 r = (point1 - point2)/dist
-                                                new_pos = point1 + r * D_MIN
+                                                new_pos = point1 + r * self.dmin
                                                 new_pos[0], new_pos[1] = max(rd.uniform(-0.85, -1), new_pos[0]), max(rd.uniform(-0.85, -1), new_pos[1])
                                                 new_pos[0], new_pos[1] = min(rd.uniform(0.85, 1), new_pos[0]), min(rd.uniform(0.85, 1), new_pos[1])
                                                 init_pos[m] = new_pos
@@ -298,8 +299,8 @@ class MISPDraw(Draw):
                         }
 
 
-        def __init__(self, prob: Problem, alg: Algorithm, instance, log_granularity: Log):
-                super().__init__(prob,alg,instance,log_granularity)
+        def __init__(self, prob: Problem, alg: Algorithm, instance, log_granularity: Log, dmin: float):
+                super().__init__(prob,alg,instance,log_granularity, dmin)
 
         def init_graph(self, instance):
                 graph = instance.graph
@@ -563,8 +564,8 @@ class MAXSATDraw(Draw):
                 }
 
 
-        def __init__(self, prob: Problem, alg: Algorithm, instance, log_granularity: Log):
-                super().__init__(prob,alg,instance,log_granularity)
+        def __init__(self, prob: Problem, alg: Algorithm, instance, log_granularity: Log, dmin: float):
+                super().__init__(prob,alg,instance,log_granularity, dmin)
 
 
         def init_graph(self, instance):
@@ -1007,9 +1008,9 @@ class MAXSATDraw(Draw):
 
 
 
-def get_visualisation(prob: Problem, alg: Algorithm, instance, log_granularity: Log):
+def get_visualisation(prob: Problem, alg: Algorithm, instance, log_granularity: Log, dmin: float):
     prob_class = globals()[prob.name + 'Draw']
-    prob_instance = prob_class(prob, alg, instance, log_granularity)
+    prob_instance = prob_class(prob, alg, instance, log_granularity, dmin)
     return prob_instance
 
 
