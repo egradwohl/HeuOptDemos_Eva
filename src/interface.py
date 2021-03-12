@@ -1,9 +1,9 @@
 """
-module which builds all necessary widgets for visualisation and runtime analysis based on information received from handler/logdata module
-
+Classes to builds all necessary widgets for visualisation and runtime analysis based on information received from handler/logdata module
 """
 
 import sys
+from typing import Tuple
 sys.path.append("C:/Users/Eva/Desktop/BakkArbeit/pymhlib")
 
 from pymhlib.demos.maxsat import MAXSATInstance, MAXSATSolution
@@ -27,19 +27,37 @@ from .logdata import Log, LogData, RunData, save_visualisation, read_from_logfil
 
 
 def load_visualisation_settings(d_min: float = 1.14):
-
+        """ Initializes an Interface object and issues call to display widgets for detailed algorithm visualization.
+        """
         interface = InterfaceVisualisation(True, d_min)
         interface.display_interface()
 
 def load_runtime_settings():
-
+        """ Initializes an Interface object and issues call to display widgets for runtime comparison.
+        """
         interface = InterfaceRuntimeAnalysis()
         interface.display_interface()
 
 
 
 class InterfaceVisualisation():
+        """Class for building a graphical user interface for configuring, running and displaying a detailed visualization of metaheuristics.
 
+        Class variables
+        - main_selection: ipywidget box, holds all widgets for selecting between loading a log file and generating a new run
+        - general_settings: ipywidget accordeon, holds all widgets for general algorithms settings (iterations, seed, etc.) as children
+        - problem_configuration: ipywidget box, holds all widgets for configuring an algorithm as children 
+        - output_controls: ipywidget box, holds all widgets for switching between single steps of an algorithm
+        - run_button: ipywidget button for running the current configuration
+        - save_button: ipywidget button for saving the current run to file
+        - output: ipywidget output, displays the plot of current algorithm step
+        - plot_instance: Draw object, stores graph information for visualizing the current run
+        - log_data: LogData object, holds data of current run and information about log granularity
+        - configuration: Configuration object, always holds the current values of the widgets
+
+        Attributes
+        - dmin: minimum distance of nodes when drawing a network
+        """
         main_selection = widgets.Box()
         general_settings = widgets.Accordion(selected_index=None)
         problem_configuration = widgets.VBox()
@@ -61,6 +79,8 @@ class InterfaceVisualisation():
                 self.dmin = dmin
 
         def display_interface(self):
+                """ Displays all widgets.
+                """
                 display(self.main_selection)
                 display(self.general_settings)
                 display(self.problem_configuration)
@@ -70,6 +90,10 @@ class InterfaceVisualisation():
 
 
         def init_main_selection(self):
+                """ Creates widgets for main selection between loading an algorithm from log file or generating a new run,
+                implements behavior on changing the selection.
+                Returns child widgets for main selection box.             
+                """
                 main_selection = widgets.RadioButtons(options=['load from log file', 'generate new run'])
                 logfile_selection = widgets.Dropdown(layout=widgets.Layout(display='None'))
                 logfile_description = widgets.Output()
@@ -110,6 +134,10 @@ class InterfaceVisualisation():
 
 
         def init_general_settings(self):
+                """ Creates widgets for general settings of an algorithm,
+                implements behavior on changing the settings.
+                Returns child widgets for general settings accordeon.             
+                """
                 self.general_settings.selected_index = None
                 seed = widgets.IntText(description='seed', value=0)
                 iterations = widgets.IntText(description='iterations', value=50)
@@ -139,6 +167,10 @@ class InterfaceVisualisation():
 
 
         def init_problem_configuration(self, visualisation):
+                """ Creates widgets for configuration of an algorithm,
+                implements behavior on changing the configuration.
+                Returns child widgets for problem configuration box.             
+                """
                 problem = widgets.Dropdown(options = handler.get_problems(), 
                                                 description = 'Problem')
                 instance = widgets.Dropdown(options = handler.get_instances(Problem(problem.value),visualisation),
@@ -183,6 +215,10 @@ class InterfaceVisualisation():
 
 
         def init_output_controls(self):
+                """ Creates widgets for controlling the steps of the visualization,
+                implements behavior upon user interaction.
+                Returns child widgets for output controls box.             
+                """
                 self.output_controls.layout.visibility = 'hidden'
                 play = widgets.Play(interval=1000, value=0, min=0, max=len(self.log_data.log_data)-1,
                         step=1, description="Press play")
@@ -220,7 +256,9 @@ class InterfaceVisualisation():
 
 
         def on_click_run(self, event):
-
+                """ Implements actions upon clicking the run button.
+                Either loads visualization from a log file or issues a call to the handler module to run an algorithm and creates visualization plot.
+                """
                 log_data = list()
                 if self.main_selection.children[0].value == 'load from log file':
                         log_data, instance = read_from_logfile(self.main_selection.children[1].value)
@@ -256,14 +294,17 @@ class InterfaceVisualisation():
                 self.animate(None)
 
         def animate(self,event):
+                """ Creates plot accordingt to current interation and log data.
+                """
                 with self.output:
                         self.plot_instance.get_animation(self.output_controls.children[1].value, self.log_data.log_data)
                         widgets.interaction.show_inline_matplotlib_plots()
 
      
         def get_options(self, problem: Problem, algo: Algorithm):
-
-                # create options widgets for selected algorithm
+                """ Creates all necessary widgets to configure the currently selected algorithm.
+                Returns all algorithm specific widgets as tuple.
+                """
                 if algo == Algorithm.GVNS:
                         return self.get_gvns_options(problem, algo)
                 if algo == Algorithm.GRASP:
@@ -272,9 +313,10 @@ class InterfaceVisualisation():
                         return self.get_ts_options(problem, algo)
                 return ()
 
-
-        # define option widgets for each algorithm
         def get_gvns_options(self, problem: Problem, algo: Algorithm):
+                """ Creates all necessary widgets to configure a GVNS.
+                Returns widgets for setting GVNS options, i.e. initial solution, neighborhood structures for local search and shaking.
+                """
                 options = handler.get_options(problem, algo)
                 ch = widgets.Dropdown( options = [m[0] for m in options[Option.CH]],
                                 description = Option.CH.value)
@@ -291,6 +333,9 @@ class InterfaceVisualisation():
 
 
         def get_grasp_options(self, problem: Problem, algo: Algorithm):
+                """ Creates all necessary widgets to configure a GRASP.
+                Returns widgets for setting GRASP options, i.e. parameter for creating a restricted candidate list, neighborhood structures for local search.
+                """
                 options = handler.get_options(problem, algo)
                 li_box = self.get_neighborhood_options(options, Option.LI, problem, algo)
                 rcl = widgets.RadioButtons(options=[m[0] for m in options[Option.RGC]],
@@ -326,6 +371,9 @@ class InterfaceVisualisation():
                 return (li_box,rcl_box)
 
         def get_ts_options(self, problem: Problem, algo: Algorithm):
+                """ Creates all necessary widgets to configure a Tabu Search.
+                Returns widgets for setting TS options, i.e. initial solution, neighborhood structures for local search and shaking, parameters for the tabu list.
+                """
                 options = handler.get_options(problem, algo)
                 ch = widgets.Dropdown( options = [m[0] for m in options[Option.CH]],
                         description = Option.CH.value)
@@ -376,8 +424,11 @@ class InterfaceVisualisation():
                 set_tl_options()
                 return (ch_box,li_box,ll_box)
 
-        # helper functions to create widget box for li/sh neighborhoods
+
         def get_neighborhood_options(self, options: dict, phase: Option, problem: Problem, algo: Algorithm):
+                """ Helper function to create all necessary widgets for configuring neigborhood structures, e.g for local search or shaking.
+                Returns a ipywidget box holding all widgets as children.
+                """
                 available = widgets.Dropdown(
                                 options = [m[0] for m in options[phase]],
                                 description = phase.value
@@ -453,7 +504,17 @@ class InterfaceVisualisation():
 
 
 class InterfaceRuntimeAnalysis(InterfaceVisualisation):
+        """Class for building a graphical user interface for configuring, running and displaying runtime performance of multiple metaheuristics.
+        Extends InterfaceVisualisation class by adding functions for comparing multiple runs/configurations of algorithms in a plot.
 
+        Attributes
+        - reset_button: ipywidget button to reset the current configurations and delete previous runs.
+        - configurations: dict of Configuration objects that are associated to currently available runs, keyed by their name.
+        - line_checkboxes: ipywidget box, holds a checkbox for each currently available run, checked runs are displayed in the comparison plot.
+        - plot_option: ipywidget box, holds all widgets to change the information shown in the comparison plot.
+        - run_data: RunData object, stores log data (iteration wise and statistical summary) of all currently available runs.
+        - plot_instance: PlotRuntime object, responsible for plotting selected runs.
+        """
 
         def __init__(self, visualisation=False) -> None:
                 super().__init__(visualisation)
@@ -477,6 +538,8 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                 self.run_data = RunData()
 
         def reset_general_settings(self):
+                """ Resets the general settings (iterations, seed, runs, use saved runs) to their default values.
+                """
                 self.general_settings.layout.display = 'flex'
                 settings = self.general_settings.children[0]
                 settings.layout.display = 'flex'
@@ -487,6 +550,7 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                 settings.children[3].value = True
 
         def display_interface(self):
+                """ Displays GUI for configuring, running and comparing multiple metaheuristics and differen configurations."""
                 display(self.general_settings)
                 display(self.problem_configuration)
                 display(self.run_button)
@@ -496,7 +560,9 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                 display(self.output)
 
         def init_plot_options(self):
-
+                """ Creates all widgets and their behavior on interaction for changing the information presented in the comparison plot.
+                Returns an ipython GridBox holding all neccessary widgets as children.
+                """
                 sum_radiobuttons = widgets.RadioButtons(options=[], layout=widgets.Layout(width='auto', grid_area='sum'))
                 solutions = widgets.RadioButtons(options=['best solutions','current solutions'], layout=widgets.Layout(width='auto', grid_area='sol'))
                 iter_slider = widgets.IntSlider(layout=widgets.Layout(padding="2em 0 0 0", grid_area='iter'), description='iteration', value=1, min=1)
@@ -546,7 +612,9 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
         
 
         def init_checkbox(self,name: str):
-                
+                """ Initializes an ipython checkbox with the given name as description, used for adding a new entry to the list of available runs in the GUI.
+                Returns a checkbox.
+                """
                 def on_change(change):
                         iter_slider =  next((widget for widget in self.plot_options.children if widget.layout.grid_area == 'iter'), None)
                         iter_slider.value = self.get_best_idx()
@@ -558,6 +626,8 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
 
 
         def on_click_reset(self, event):
+                """ Implements actions upon clicking the reset button, i.e. clearing the plot, deleting previous runs and reset widgets to default values.
+                """
                 self.reset_general_settings()
                 self.configurations = {}
                 for widget in [self.problem_configuration.children[0],self.problem_configuration.children[1],self.general_settings.children[0].children[0]]:
@@ -572,6 +642,8 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                 self.plot_instance.problem = None
 
         def on_click_run(self, event):
+                """ Implements actions upon clicking the run button. Loads existing runs or generates new runs, adds new data to RunData instance and adds new run to the plot.
+                """
                 text = widgets.Label(value='running...')
                 display(text)
                 # disable prob + inst + iteration + run button
@@ -604,7 +676,9 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                 self.plot_comparison(iter_slider.value)
 
 
-        def get_best_idx(self):
+        def get_best_idx(self) -> int:
+                """ Returns the number of iteration in which the best objective value over all selected runs was found.
+                """
                 checked = [c.description for c in self.line_checkboxes.children if c.value]
                 if checked == []:
                         return 1
@@ -617,7 +691,10 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                 return df.loc[df.isin([m]).any(axis=1)].index.min()
 
         
-        def prepare_and_save_configuration(self):
+        def prepare_and_save_configuration(self) -> Configuration:
+                """ Saves the current state of the widgets to a Comparison object and adds it to the configurations dict, keyed by its name.
+                Returns the Comparison object.
+                """
                 config = self.configuration.make_copy()
                 name = [f'{config.algorithm.name.lower()}']
                 for k,v in config.options.items():
@@ -632,6 +709,8 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                 return config
 
         def plot_comparison(self, i):
+                """ Prepares data of all runs currently selected and issues call to plot the data.
+                """
                 stats = self.run_data.get_stat_options()
                 self.plot_options.children[2].options = stats
                 with self.output:
@@ -650,8 +729,10 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                         widgets.interaction.show_inline_matplotlib_plots()
 
 
-        def load_datafile_or_run_algorithm(self,params: Configuration):
-
+        def load_datafile_or_run_algorithm(self,params: Configuration) -> Tuple[pd.DataFrame, pd.DataFrame]:
+                """ Loads runs from log files or issues call to generate new runs, depending on the settings chosen by the user and the availability of log files.
+                Returns interation wise data and summary data as tuple of DataFrames.
+                """
                 if params.use_runs:
                         name = f'i{params.iterations}_s{params.seed}_' + params.name[params.name.find('.')+1:].strip()
                         description = self.create_configuration_description(params)
@@ -684,7 +765,8 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
 
 
         def save_runs(self,event):
-
+                """ Saves the selected runs to log files if they have not been saved previously.
+                """
                 checked = {config.description for config in self.line_checkboxes.children if config.value}
                 not_saved = {name for name,config in self.configurations.items() if config.runs > len(config.saved_runs)}
                 to_save = checked.intersection(not_saved)
@@ -716,6 +798,9 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
 
 
         def configuration_exists_in_saved(self, name: str, description: str):
+                """ Checks if runs of the configuration described in parameter 'description' already exists in a saved log file.
+                Returns the full path name of the log file, if a match is found, else returns False.
+                """
                 description = description[description.find('D '):]
                 path = 'logs'+ os.path.sep + 'saved_runtime' + os.path.sep + Problem(self.problem_configuration.children[0].value).name.lower()
                 log_files = os.listdir(path)
@@ -737,6 +822,7 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
         
 
         def create_configuration_description(self, config: Configuration):
+                """ Returns a textual description of the given algorithm configuration."""
                 s = f"R runs={config.runs}\n"
                 s += f'D inst={config.instance}\n'
                 s += f"D seed={config.seed}\n"

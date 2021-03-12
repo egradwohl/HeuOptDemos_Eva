@@ -1,3 +1,7 @@
+""" Module for reading log files created by pymhlib runs and preparing the data read for visualisation.
+Classes for handling visualisation data.
+"""
+
 import sys
 sys.path.append("C:/Users/Eva/Desktop/BakkArbeit/pymhlib")
 from pymhlib.demos.misp import MISPInstance
@@ -7,14 +11,14 @@ from pymhlib.demos.maxsat import MAXSATInstance
 import ast
 import re
 import os
-
-
+import numpy as np
 import enum
 import time
 import pandas as pd
-from .problems import Configuration, Problem, Algorithm, Option
-import numpy as np
 
+from .problems import Configuration, Problem, Algorithm, Option
+
+# describes different levels of log granularity for step by step visualization
 class Log(enum.Enum):
         StepInter = 'step-by-step (intermediate steps)' # start-frame and end-frame for each step
         StepNoInter = 'step-by-step (no intermediate steps)' # start and end combined in one frame
@@ -22,9 +26,10 @@ class Log(enum.Enum):
         Update = 'updated solutions' # result of a phase e.g. li(vnd)-cycle, complete rgc in one frame
         Cycle = 'major cycles' # result of one entire cycle of an algorithm, e.g. sh+li (gvns), rgc+li (grasp), per frame
 
+
 # global variables
-len_start = 7
-len_end = 8
+len_start = 7 # default number of lines that hold all information logged before an algorithm method is performed
+len_end = 8 # default number of lines that hold all information logged after an algorithm method was performed
 step_log_path = 'logs'+ os.path.sep + 'step.log'
 iter_log_path = "logs" + os.path.sep + "iter.log"
 sum_log_path = "logs" + os.path.sep + "summary.log"

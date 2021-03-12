@@ -129,7 +129,7 @@ class ProblemDefinition(ABC):
         self.to_maximize = to_maximize
     
 
-    def get_algorithms(self) -> List[Algorithm]:
+    def get_algorithms(self) -> List[str]:
         """ Returns a list of available algoriths for this problem."""
         return [k.value for k,_ in self.options.items()]
 

@@ -1,14 +1,16 @@
 """
-handler module which provides information for widgets in interface module and uses widget input
-to issue pymhlib calls
+Handler module which provides information about problems and algorithms for widgets in interface module. 
+Issues pymhlib calls according to given configurations and returns data read from created log files.
 """
+
 import sys
 sys.path.append("C:/Users/Eva/Desktop/BakkArbeit/pymhlib")
 
 import os
 import logging
-import numpy as np
+from typing import List, Tuple, Any
 import pandas as pd
+
 
 # pymhlib imports
 from pymhlib.settings import settings, parse_settings, seed_random_generators
@@ -16,18 +18,20 @@ from pymhlib.log import init_logger
 from pymhlib import demos
 from pymhlib.gvns import GVNS
 from pymhlib.ts import TS
+from pymhlib.solution import Solution
+from pymhlib.scheduler import Scheduler
+
 
 # module imports
 from .problems import Problem, Algorithm, Option, MAXSAT, MISP, Configuration, ProblemDefinition
 from .logdata import read_step_log, read_sum_log, read_iter_log
 
-
-if not settings.__dict__: parse_settings(args='')
-
 # pymhlib settings
-settings.mh_lfreq = 1
+if not settings.__dict__: parse_settings(args='')
+settings.mh_lfreq = 1 # log each iteration
 
 
+# paths for instance files and log files
 vis_instance_path = "instances" + os.path.sep
 demo_data_path = os.path.dirname(demos.__file__) + os.path.sep + 'data'
 step_log_path = "logs" + os.path.sep + "step.log"
@@ -41,20 +45,21 @@ sum_log_path = "logs" + os.path.sep + "summary.log"
 problems = {p.name: p for p in [prob() for prob in ProblemDefinition.__subclasses__()]}
 
 # methods used by module interface to extract information for widgets
-def get_problems():
+def get_problems() -> List[str]:
     return [p.value for p in problems.keys()]
 
-def get_instances(prob: Problem,visualisation):
+def get_instances(prob: Problem,visualisation) -> List[str]:
     return problems[prob].get_instances(visualisation)
 
-def get_algorithms(prob: Problem):
+def get_algorithms(prob: Problem) -> List[str]:
     return problems[prob].get_algorithms()
 
-def get_options(prob: Problem, algo: Algorithm):
+def get_options(prob: Problem, algo: Algorithm) -> dict:
     return problems[prob].get_options(algo)
 
 
-def run_algorithm_visualisation(config: Configuration):
+def run_algorithm_visualisation(config: Configuration) -> Tuple[List[dict],Any]:
+    """ Runs a pymhlib algorithm according to given configurations and returns log data for visualizing the run and the pymhlib problem instance that was optimized."""
     settings.mh_out = sum_log_vis_path
     settings.mh_log = iter_log_vis_path
     settings.mh_log_step = step_log_path 
@@ -68,7 +73,8 @@ def run_algorithm_visualisation(config: Configuration):
 
 
 
-def run_algorithm_comparison(config: Configuration):
+def run_algorithm_comparison(config: Configuration) -> Tuple[pd.Series, pd.DataFrame]:
+    """ Executes multiple runs of a given algorithm configuration and returns iteration data and summary data as pandas DataFrames."""
     settings.mh_out = sum_log_path
     settings.mh_log = iter_log_path
     settings.mh_log_step = 'None'
@@ -84,8 +90,9 @@ def run_algorithm_comparison(config: Configuration):
     return log_df, summary
 
 
-def run_algorithm(config: Configuration, visualisation: bool=False):
-
+def run_algorithm(config: Configuration, visualisation: bool=False) -> Solution:
+    """ Issues a call to pymhlib algorithm according to given configuration.
+        Returns the optimized pymhlib solution object."""
     settings.mh_titer = config.iterations
 
     # initialize solution for problem
@@ -115,7 +122,9 @@ def run_algorithm(config: Configuration, visualisation: bool=False):
     return solution
 
 
-def init_gvns(solution, config: Configuration):
+def init_gvns(solution, config: Configuration) -> Scheduler:
+    """ Prepares parameters for running a GVNS and initializes a pymhlib GVNS object.
+        Returns the GVNS object."""
 
     prob = problems[config.problem]
     ch = [ prob.get_method(Algorithm.GVNS, Option.CH, m[0], m[1]) for m in config.options.get(Option.CH, []) ]
@@ -126,7 +135,9 @@ def init_gvns(solution, config: Configuration):
     return alg
 
 
-def init_grasp(solution, config: Configuration):
+def init_grasp(solution, config: Configuration) -> Scheduler:
+    """ Prepares parameters for running a GRASP and initializes a pymhlib GVNS object accordingly.
+        Returns the GVNS object which simulates GRASP."""
     if config.options[Option.RGC][0][0] == 'k-best':
         settings.mh_grc_par = True
         settings.mh_grc_k = config.options[Option.RGC][0][1]
@@ -145,8 +156,9 @@ def init_grasp(solution, config: Configuration):
     return alg
 
 
-def init_ts(solution, config: Configuration):
-
+def init_ts(solution, config: Configuration) -> Scheduler:
+    """ Prepares parameters for running a Tabu Search and initializes a pymhlib TS object.
+        Returns the TS object."""
     prob = problems[config.problem]
     ch = [ prob.get_method(Algorithm.TS, Option.CH, m[0], m[1]) for m in config.options[Option.CH] ]
     li = [ prob.get_method(Algorithm.TS, Option.LI, m[0], m[1]) for m in config.options[Option.LI] ]
