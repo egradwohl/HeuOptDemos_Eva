@@ -8,6 +8,7 @@ from pymhlib.demos.maxsat import MAXSATInstance, MAXSATSolution
 from pymhlib.demos.misp import MISPInstance, MISPSolution
 from pymhlib.scheduler import Method
 from pymhlib import demos
+from pymhlib.settings import get_settings_parser
 
 
 import enum
@@ -21,6 +22,7 @@ from typing import List
 demo_data_path = os.path.dirname(demos.__file__) + os.path.sep + 'data' + os.path.sep
 # path for reading instance files for algorithm visualisation
 vis_data_path = 'instances' + os.path.sep
+parser = get_settings_parser()
 
 # extend enums as needed, they hold the string values which are used for representation in widgets
 class Problem(enum.Enum):
@@ -158,6 +160,14 @@ class ProblemDefinition(ABC):
         assert len(m) > 0, f'method not found: {name}'
         return m[0].get_method(opt,par)
 
+    def get_ts_tie_options(self):
+
+        for a in parser._actions:
+            if '--mh_ts_tie_' + self.name.name.lower() in a.option_strings:
+                return a.choices
+        else:
+            return []
+
 
 
 class MAXSAT(ProblemDefinition):
@@ -166,6 +176,7 @@ class MAXSAT(ProblemDefinition):
     """
 
     def __init__(self):
+        self.name = Problem.MAXSAT
 
         options = {Algorithm.GVNS: {
                                 Option.CH: [Parameters(InitSolution.random.name, MAXSATSolution.construct)
@@ -184,7 +195,7 @@ class MAXSAT(ProblemDefinition):
                                             Parameters(InitSolution.greedy.name, MAXSATSolution.construct_greedy, value=InitSolution.greedy.value)
                                             ],
                                 Option.LI: [Parameters('k-flip neighborhood search', MAXSATSolution.local_improve_restricted, param_type=int)],
-                                Option.TL: [Parameters('min length',None,int),Parameters('max length',None,int),Parameters('change (iteration)', None,int)]
+                                Option.TL: [Parameters('min length',None,int),Parameters('max length',None,int),Parameters('change (iteration)', None,int), Parameters('tie breaking',None,self.get_ts_tie_options())]
                                 }
                     }
 
@@ -206,7 +217,7 @@ class MISP(ProblemDefinition):
     A problem class defining the available algorithms and their available configuration options for the Max-Independent Set Problem.
     """
     def __init__(self):
-
+        self.name = Problem.MISP
         options = {Algorithm.GVNS: {
                                 Option.CH: [Parameters(InitSolution.random.name, MISPSolution.construct)
                                             ,Parameters(InitSolution.greedy.name, MISPSolution.construct_greedy, value=InitSolution.greedy.value)
@@ -225,7 +236,7 @@ class MISP(ProblemDefinition):
                                             ,Parameters(InitSolution.greedy.name, MISPSolution.construct_greedy, value=InitSolution.greedy.value)
                                             ],
                                     Option.LI: [Parameters('two-exchange random fill neighborhood search', MISPSolution.local_improve_restricted, value=2)],
-                                    Option.TL: [Parameters('min length',None,int),Parameters('max length',None,int),Parameters('change (iteration)', None,int)]
+                                    Option.TL: [Parameters('min length',None,int),Parameters('max length',None,int),Parameters('change (iteration)', None,int), Parameters('tie breaking',None,self.get_ts_tie_options())]
                                 
                     }
                     

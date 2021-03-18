@@ -68,6 +68,7 @@ def run_algorithm_visualisation(config: Configuration) -> Tuple[List[dict],Any]:
     settings.seed =  config.seed
     seed_random_generators()
 
+
     solution = run_algorithm(config,True)
     return read_step_log(config.problem.name.lower(), config.algorithm.name.lower()), solution.inst
 
@@ -159,11 +160,13 @@ def init_grasp(solution, config: Configuration) -> Scheduler:
 def init_ts(solution, config: Configuration) -> Scheduler:
     """ Prepares parameters for running a Tabu Search and initializes a pymhlib TS object.
         Returns the TS object."""
+    tie_option = config.options[Option.TL][3][1]
+    if tie_option != None:
+        settings.__setattr__('mh_ts_tie_'+ config.problem.name.lower(), tie_option)
     prob = problems[config.problem]
     ch = [ prob.get_method(Algorithm.TS, Option.CH, m[0], m[1]) for m in config.options[Option.CH] ]
     li = [ prob.get_method(Algorithm.TS, Option.LI, m[0], m[1]) for m in config.options[Option.LI] ]
     mini, maxi, change = config.options[Option.TL][0][1], config.options[Option.TL][1][1], config.options[Option.TL][2][1]
-
     alg = TS(solution, ch, li, mini, maxi, change)
     return alg
 

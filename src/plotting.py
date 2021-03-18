@@ -262,6 +262,8 @@ class Draw(ABC):
                         i +=1
                 return init_pos
 
+        
+
 class MISPDraw(Draw):
 
         comments = {
@@ -577,13 +579,23 @@ class MAXSATDraw(Draw):
                 incumbent = [i + n for i in variables]
 
                 #sort clauses by barycentric heuristic (average of variable positions)
+                '''
                 def avg_clause(clause):
                         i = clause-1
                         vl = list(map(abs,instance.clauses[i]))
                         l = len(instance.clauses[i])
                         return sum(vl)/l
+                '''
+                #sort clauses by median heuristic (median of variable position)
+                def median_clause(clause):
+                        i = clause-1
+                        vl = list(map(abs,instance.clauses[i]))
+                        vl.sort()
+                        j = len(vl)
+                        pos = vl[int(j/2)]
+                        return pos
 
-                clauses_sorted = sorted(clauses, key=avg_clause)
+                clauses_sorted = sorted(clauses, key=median_clause)
 
                 ### calculate positions for nodes
                 step = 2/(n+1)

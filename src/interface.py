@@ -267,7 +267,16 @@ class InterfaceVisualisation():
                         log_data = log_data[2:]
                         
                 else:
-                        log_data, instance = handler.run_algorithm_visualisation(self.configuration)
+                        try:
+                                log_data, instance = handler.run_algorithm_visualisation(self.configuration)
+                        except AssertionError as e:
+                                self.output.clear_output()
+                                plt.close()
+                                self.save_button.disabled = True
+                                self.output_controls.layout.visibility = 'hidden'
+                                with self.output:
+                                        print('Invalid configuration: ' + str(e))
+                                return
 
                 self.log_data = LogData(self.configuration.problem, self.configuration.algorithm,log_data)
 
@@ -387,9 +396,11 @@ class InterfaceVisualisation():
                 min_ll = widgets.IntText(value=5,description='min length', layout=widgets.Layout(width='150px'), disabled=True)
                 max_ll = widgets.IntText(value=5,description='max length', layout=widgets.Layout(width='150px'))
                 iter_ll = widgets.IntText(value=0,description='change (iteration)', layout=widgets.Layout(width='150px'))
+                opt = next((o for o in options.get(Option.TL) if o[0].startswith('tie')), ('tie breaking',[]))  
+                tie_break = widgets.RadioButtons(options=opt[1], description=opt[0])
 
                 def set_tl_options():
-                        self.configuration.options.update( {Option.TL: [(o.description, o.value) for o in [min_ll, max_ll, iter_ll]]})
+                        self.configuration.options.update( {Option.TL: [(o.description, o.value) for o in [min_ll, max_ll, iter_ll, tie_break]]})
 
                 def on_change_min(change):
                         if change.new > max_ll.value:
@@ -414,13 +425,16 @@ class InterfaceVisualisation():
                                 min_ll.value = max_ll.value
                                 min_ll.disabled = True
                         set_tl_options()
+                def on_change_tie(change):
+                        set_tl_options()
 
-                
+
                 min_ll.observe(on_change_min, names='value')
                 max_ll.observe(on_change_max, names='value')
                 iter_ll.observe(on_change_iter, names='value')
+                tie_break.observe(on_change_tie, names='value')
                 label = widgets.Label(value='Tabu List')
-                ll_box = widgets.HBox([label,min_ll,max_ll,iter_ll])
+                ll_box = widgets.HBox([label,min_ll,max_ll,iter_ll,tie_break])
                 set_tl_options()
                 return (ch_box,li_box,ll_box)
 
