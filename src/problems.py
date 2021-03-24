@@ -163,7 +163,7 @@ class ProblemDefinition(ABC):
     def get_ts_tie_options(self):
 
         for a in parser._actions:
-            if '--mh_ts_tie_' + self.name.name.lower() in a.option_strings:
+            if '--mh_tie_breaking_' + self.name.name.lower() in a.option_strings:
                 return a.choices
         else:
             return []

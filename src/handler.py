@@ -96,14 +96,21 @@ def run_algorithm(config: Configuration, visualisation: bool=False) -> Solution:
         Returns the optimized pymhlib solution object."""
     settings.mh_titer = config.iterations
 
-    # initialize solution for problem
-    solution = problems[config.problem].get_solution(config.get_inst_path(visualisation))
-
     if visualisation:
         #reset seed in case a random instance was created
         settings.seed =  config.seed
         seed_random_generators()
 
+    tie_option = config.options.get(Option.TL,None)
+    if tie_option != None:
+        settings.__setattr__('mh_tie_breaking_'+ config.problem.name.lower(), tie_option[3][1])
+    else:
+        settings.__setattr__('mh_tie_breaking_'+ config.problem.name.lower(), 'random')
+
+
+
+    # initialize solution for problem
+    solution = problems[config.problem].get_solution(config.get_inst_path(visualisation))
     alg = None
     
     if config.algorithm == Algorithm.GVNS:
@@ -160,9 +167,7 @@ def init_grasp(solution, config: Configuration) -> Scheduler:
 def init_ts(solution, config: Configuration) -> Scheduler:
     """ Prepares parameters for running a Tabu Search and initializes a pymhlib TS object.
         Returns the TS object."""
-    tie_option = config.options[Option.TL][3][1]
-    if tie_option != None:
-        settings.__setattr__('mh_ts_tie_'+ config.problem.name.lower(), tie_option)
+
     prob = problems[config.problem]
     ch = [ prob.get_method(Algorithm.TS, Option.CH, m[0], m[1]) for m in config.options[Option.CH] ]
     li = [ prob.get_method(Algorithm.TS, Option.LI, m[0], m[1]) for m in config.options[Option.LI] ]

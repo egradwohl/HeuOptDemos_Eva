@@ -23,7 +23,9 @@ from .plotting_runtime import PlotRuntime
 from .logdata import Log, LogData, RunData, save_visualisation, read_from_logfile, get_log_description
 
 
-
+os.makedirs('logs' + os.path.sep + 'saved', exist_ok=True)
+os.makedirs('logs' + os.path.sep + 'saved_runtime', exist_ok=True)
+os.makedirs('instances', exist_ok=True)
 
 
 def load_visualisation_settings(d_min: float = 1.14):
@@ -470,7 +472,8 @@ class InterfaceVisualisation():
 
                 selected = widgets.Select(
                                 options = [],
-                                description = 'Selected'
+                                description = 'Selected',
+                                layout=widgets.Layout(width='350px')
                 )
 
                 def on_click_nh(event):
@@ -817,6 +820,7 @@ class InterfaceRuntimeAnalysis(InterfaceVisualisation):
                 """
                 description = description[description.find('D '):]
                 path = 'logs'+ os.path.sep + 'saved_runtime' + os.path.sep + Problem(self.problem_configuration.children[0].value).name.lower()
+                os.makedirs(path, exist_ok=True)
                 log_files = os.listdir(path)
                 for l in log_files:
                         n = l[l.find('i'):]
