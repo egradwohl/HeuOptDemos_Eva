@@ -412,7 +412,7 @@ class MISPDraw(Draw):
 
                 nx.set_node_attributes(self.graph, data.get('cl',{}), 'label')
                 nx.set_node_attributes(self.graph, {n: self.green if data.get('sel',-1) == n else self.blue for n in data.get('sol', [])}, name='color')
-                selected = set() if not data.get('sel',False) else set(self.graph.neighbors(data.get('sel')))
+                selected = set() if not 'sel' in data else set(self.graph.neighbors(data.get('sel')))
                 n_unsel = selected.intersection(set(data['cl'].keys()))
                 nx.set_node_attributes(self.graph, {n:self.orange for n in n_unsel},'color')
                 nx.set_edge_attributes(self.graph, {(data.get('sel',n),n):'black' for n in n_unsel}, 'color')

@@ -46,20 +46,45 @@ problems = {p.name: p for p in [prob() for prob in ProblemDefinition.__subclasse
 
 # methods used by module interface to extract information for widgets
 def get_problems() -> List[str]:
+    """ Loads the names of all available problems.
+    
+    :return: a list of available problems.
+    """
     return [p.value for p in problems.keys()]
 
-def get_instances(prob: Problem,visualisation) -> List[str]:
+def get_instances(prob: Problem,visualisation: bool) -> List[str]:
+    """ Loads the names of all available instances for the given problem.
+
+    :param prob: Problem for which instances should be loaded
+    :param visualisation: determines if the instances are loaded for step-by-step visualisation
+    :return: a list of all available instances
+    """
     return problems[prob].get_instances(visualisation)
 
 def get_algorithms(prob: Problem) -> List[str]:
+    """ Loads the names of all available algorithms for the given problem.
+
+    :param prob: Problem for which algorithms should be loaded
+    :return: a list of all available algorithms
+    """
     return problems[prob].get_algorithms()
 
 def get_options(prob: Problem, algo: Algorithm) -> dict:
+    """ Loads the abailable options for the given problem and algorithm.
+
+    :param prob: Problem for which options should be loaded
+    :param algo: Algorithm for which options should be loaded
+    :return: a dictionary of available options
+    """
     return problems[prob].get_options(algo)
 
 
 def run_algorithm_visualisation(config: Configuration) -> Tuple[List[dict],Any]:
-    """ Runs a pymhlib algorithm according to given configurations and returns log data for visualizing the run and the pymhlib problem instance that was optimized."""
+    """ Runs a pymhlib algorithm according to the given configurations for step-by-step visualization.
+    
+    :param config: Configuration object holding all information needed for running the alogrithm
+    :return: log data for visualizing the run as a list, the pymhlib problem instance that was optimized.
+    """
     settings.mh_out = sum_log_vis_path
     settings.mh_log = iter_log_vis_path
     settings.mh_log_step = step_log_path 
@@ -68,14 +93,17 @@ def run_algorithm_visualisation(config: Configuration) -> Tuple[List[dict],Any]:
     settings.seed =  config.seed
     seed_random_generators()
 
-
     solution = run_algorithm(config,True)
     return read_step_log(config.problem.name.lower(), config.algorithm.name.lower()), solution.inst
 
 
 
 def run_algorithm_comparison(config: Configuration) -> Tuple[pd.Series, pd.DataFrame]:
-    """ Executes multiple runs of a given algorithm configuration and returns iteration data and summary data as pandas DataFrames."""
+    """ Executes multiple runs of the given algorithm configuration for comparison. 
+    
+    :param config: Configuration object holding all information needed for running the alogrithm
+    :return: pandas DataFrame of iteration data, pandas Dataframe of summary statistics.
+    """
     settings.mh_out = sum_log_path
     settings.mh_log = iter_log_path
     settings.mh_log_step = 'None'
@@ -93,7 +121,11 @@ def run_algorithm_comparison(config: Configuration) -> Tuple[pd.Series, pd.DataF
 
 def run_algorithm(config: Configuration, visualisation: bool=False) -> Solution:
     """ Issues a call to pymhlib algorithm according to given configuration.
-        Returns the optimized pymhlib solution object."""
+
+    :param config: Configuration object holding all information needed for running the alogrithm
+    :param visualisation: determines if the instances are loaded for step-by-step visualisation
+    :return: the optimized pymhlib Solution object.
+    """
     settings.mh_titer = config.iterations
 
     if visualisation:
@@ -101,12 +133,12 @@ def run_algorithm(config: Configuration, visualisation: bool=False) -> Solution:
         settings.seed =  config.seed
         seed_random_generators()
 
+    # set tie breaking method (if given)
     tie_option = config.options.get(Option.TL,None)
     if tie_option != None:
         settings.__setattr__('mh_tie_breaking_'+ config.problem.name.lower(), tie_option[3][1])
     else:
         settings.__setattr__('mh_tie_breaking_'+ config.problem.name.lower(), 'random')
-
 
 
     # initialize solution for problem
@@ -131,8 +163,12 @@ def run_algorithm(config: Configuration, visualisation: bool=False) -> Solution:
 
 
 def init_gvns(solution, config: Configuration) -> Scheduler:
-    """ Prepares parameters for running a GVNS and initializes a pymhlib GVNS object.
-        Returns the GVNS object."""
+    """ Prepares parameters for running a GVNS.
+
+    :param solution: pymhlib Solution object to be optimized
+    :param config: Configuration object holding all information needed for running the alogrithm
+    :return: pymhlib GVNS object, initialized according to given configuration
+    """
 
     prob = problems[config.problem]
     ch = [ prob.get_method(Algorithm.GVNS, Option.CH, m[0], m[1]) for m in config.options.get(Option.CH, []) ]
@@ -144,8 +180,12 @@ def init_gvns(solution, config: Configuration) -> Scheduler:
 
 
 def init_grasp(solution, config: Configuration) -> Scheduler:
-    """ Prepares parameters for running a GRASP and initializes a pymhlib GVNS object accordingly.
-        Returns the GVNS object which simulates GRASP."""
+    """ Prepares parameters for running a GRASP.
+
+    :param solution: pymhlib Solution object to be optimized
+    :param config: Configuration object holding all information needed for running the alogrithm
+    :return: pymhlib GVNS object, initialized according to given configuration to simulate a GRASP
+    """
     if config.options[Option.RGC][0][0] == 'k-best':
         settings.mh_grc_par = True
         settings.mh_grc_k = config.options[Option.RGC][0][1]
@@ -165,9 +205,12 @@ def init_grasp(solution, config: Configuration) -> Scheduler:
 
 
 def init_ts(solution, config: Configuration) -> Scheduler:
-    """ Prepares parameters for running a Tabu Search and initializes a pymhlib TS object.
-        Returns the TS object."""
+    """ Prepares parameters for running a TS.
 
+    :param solution: pymhlib Solution object to be optimized
+    :param config: Configuration object holding all information needed for running the alogrithm
+    :return: pymhlib TS object, initialized according to given configuration
+    """
     prob = problems[config.problem]
     ch = [ prob.get_method(Algorithm.TS, Option.CH, m[0], m[1]) for m in config.options[Option.CH] ]
     li = [ prob.get_method(Algorithm.TS, Option.LI, m[0], m[1]) for m in config.options[Option.LI] ]

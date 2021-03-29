@@ -1,8 +1,9 @@
-""" Module for reading log files created by pymhlib runs and preparing the data read for visualisation.
+""" Module for reading log files created by pymhlib runs and preparing the data for visualisation.
 Classes for handling visualisation data.
 """
 
 import sys
+from typing import List
 sys.path.append("C:/Users/Eva/Desktop/BakkArbeit/pymhlib")
 from pymhlib.demos.misp import MISPInstance
 from pymhlib.demos.maxsat import MAXSATInstance
@@ -18,13 +19,16 @@ import pandas as pd
 
 from .problems import Configuration, Problem, Algorithm, Option
 
-# describes different levels of log granularity for step by step visualization
+
 class Log(enum.Enum):
-        StepInter = 'step-by-step (intermediate steps)' # start-frame and end-frame for each step
-        StepNoInter = 'step-by-step (no intermediate steps)' # start and end combined in one frame
-        NewInc = 'new incumbents' # only frames where new best solution was found
-        Update = 'updated solutions' # result of a phase e.g. li(vnd)-cycle, complete rgc in one frame
-        Cycle = 'major cycles' # result of one entire cycle of an algorithm, e.g. sh+li (gvns), rgc+li (grasp), per frame
+    """ Enumerations for different levels of log granularity for step by step visualization.
+    The values of the attributes correspond to their names in the widgets.
+    """
+    StepInter = 'step-by-step (intermediate steps)' # start-frame and end-frame for each step
+    StepNoInter = 'step-by-step (no intermediate steps)' # start and end combined in one frame
+    NewInc = 'new incumbents' # only frames where new best solution was found
+    Update = 'updated solutions' # result of a phase e.g. li(vnd)-cycle, complete rgc in one frame
+    Cycle = 'major cycles' # result of one entire cycle of an algorithm, e.g. sh+li (gvns), rgc+li (grasp), per frame
 
 
 # global variables
@@ -36,8 +40,25 @@ sum_log_path = "logs" + os.path.sep + "summary.log"
 
 
 class LogData():
+    """A class for storing log data for step-by-step visualization. 
+    Provides methods and attributes for changing the level of log granularity and retrieving the relevant data.
+
+    Attributes
+        - problem: Problem used for this log data
+        - algorithm: Algorithm used for this log data
+        - full_data: list of dictionaries, holds the entire visualization data
+        - levels: dictionary keyed by levels of log granularity, each holds a list of indices of the relevant data
+        - current_level: holds the currently active level of log granularity
+        - log_data: list of dicionaries, holds the data for the currently active level of log granularity
+    """
 
     def __init__(self, problem: Problem, algorithm: Algorithm, log_data: list):
+        """ Initialization.
+
+        :param problem: Problem used for the given log data
+        :param algorithm: Algorithm used for the given log data
+        :param log_data: list holding the entire data read from the log file
+        """
         self.problem = problem
         self.algorithm = algorithm
         self.full_data = [{'status':'init', 'algorithm': self.algorithm, 'problem': self.problem}] + log_data #prepend additional frame for displaying instance in the beginning
@@ -45,8 +66,11 @@ class LogData():
         self.current_level = Log.StepInter
         self.log_data = self.full_data # holds logdata for currently active log level
 
-    def init_levels(self):
-        # for each level the relevant indices are stored
+    def init_levels(self) -> dict:
+        """ Dedects the idices of the relevant data for each level of log granularity out of the complete log data.
+        
+        :return: a dictionary keyed by levels of log granularity, each holding a list of corresponding indices
+        """
         levels = dict()
         levels[Log.StepInter] = list(range(len(self.full_data)))
         levels[Log.StepNoInter] = [0] +[i for i in levels[Log.StepInter] if self.full_data[i].get('status', '') in  ['end', 'sel']]
@@ -70,8 +94,13 @@ class LogData():
         return levels
 
 
-    def change_granularity(self, i: int, granularity: Log):
-        # sets self.log_data to requested granularity and returns the number of iteration to show next
+    def change_granularity(self, i: int, granularity: Log) -> int:
+        """ Changes the currently active log granularity and determines the index of the next data that should be displayed for the new log granularity.
+
+        :param i: number of iteration at the time of changing the log level
+        :param granularity: new level of log granularity
+        :return: the index of the next data that should be displayed for the new log granularity
+        """
         self.log_data = [self.full_data[i] for i in self.levels[granularity]]
         current_iter = self.levels[self.current_level][i]
         next_iter = len(self.levels[granularity]) -1  if current_iter > self.levels[granularity][-1] else next(i for i,val in enumerate(self.levels[granularity]) if val >= current_iter) 
@@ -82,9 +111,9 @@ class LogData():
 
 def read_step_log(prob: str, alg: str):
     """Method for reading data logged by pymhlibs step-logger and creating data dicts for algorithm visualisation.
-    :returns: a list of dicts, each containing the data used for plotting one visualisation frame.
-    """
 
+    :return: a list of dicts, each containing the data used for plotting one visualisation frame.
+    """
     data = list()
     with open(step_log_path, 'r') as logfile:
         for line in logfile:
@@ -97,7 +126,8 @@ def read_step_log(prob: str, alg: str):
 
 def read_sum_log():
     """Reads algorithm summaries of n runs logged by pymhlibs general logger.
-    :returns: a dataframe containing algorithm statistics for n runs.
+
+    :return: a dataframe containing algorithm statistics for n runs.
     """
     idx = []
     with open(sum_log_path) as f: 
@@ -120,10 +150,10 @@ def read_sum_log():
 
 def read_iter_log(name):
     """Reads iteration data logged by pymhlibs iteration logger.
-    :param name: name of the configuration the data belongs to.
-    :returns: a dataframe containing objective values of iterations for n runs.
-    """
 
+    :param name: name of the configuration the data belongs to.
+    :return: a dataframe containing objective values of iterations for n runs.
+    """
     df = pd.read_csv(iter_log_path, sep=r'\s+', header=None)
 
     df.drop(df[ df[1] == '0' ].index , inplace=True) #drop initialisation line
@@ -145,7 +175,13 @@ def read_iter_log(name):
     return full
 
 
-def create_log_data(data: list()):
+def create_log_data(data: list) -> List[dict]:
+    """ Processes the raw data read from the log file, converts it into a list where each entry represents the data for one
+    visualization frame.
+
+    :param data: raw data, each entry corresponds to a line of the log file
+    :return: data for visualization
+    """
 
     vis_data = []
     i = 0
@@ -177,20 +213,27 @@ def create_log_data(data: list()):
     return vis_data
 
 
-def create_gvns_data(data: list()):
-
+def create_gvns_data(data: list) -> dict:
+    """ Creates visualisation data for one gvns frame out of a list of log file data.
+    Is also used for data of a tabu search.
+    
+    :param data: a list of one-entry dictionaries that describe one visualisation frame
+    :return: a dictionary holding the data for one gvns/ts frame
+    """
     entries = {k:v for x in data if type(x) == dict for k,v in x.items() if k!='ta'}
     tabu_attr = [v for x in data if type(x) == dict for k,v in x.items() if k=='ta']
     if len(tabu_attr) > 0 :
         entries['tabu'] = tabu_attr
     entries['status'] = data[0]
-    if 'end_iter' in data:
-        entries['end'] = True
     return entries
 
 
-def create_grasp_data(data: list()):
-
+def create_grasp_data(data: list) -> dict:
+    """ Creates visualisation data for one grasp frame out of a list of log file data.
+    
+    :param data: a list of one-entry dictionaries that describe one visualisation frame
+    :return: a dictionary holding the data for one grasp frame
+    """
     entries = [create_gvns_data(data[:len_start])]
     end_i = data.index('end')
 
@@ -209,6 +252,11 @@ def create_grasp_data(data: list()):
 
         
 def cast_line(line: str):
+    """ Casts the given string to the appropriate data type.
+    
+    :param line: one line of the log file
+    :return: if the string is of the form 'key: data', a dictionary is returned, else the input line is returned
+    """
     if not ':' in line:
         return line.lower()
     idx = line.find(':')
@@ -246,6 +294,11 @@ def cast_line(line: str):
 
 
 def cast_number(data: str):
+    """ Casts the given numeric string to a number.
+
+    :param data: numeric string
+    :return: a number (int or float)
+    """
 
     if re.match("^[-+]?[0-9]+$", data): #int
         return int(data)
@@ -253,8 +306,17 @@ def cast_number(data: str):
     if re.match("^[-+]?[0-9]+\.[0-9]*", data): #float
         return float(data)
 
+    return data
+
 
 def save_visualisation(params: Configuration, graph=None):
+    """ Saves the current content of the visualisation log file written by the pymhlib step logger to a dedicated directory.
+    Prepends textual information about the used configuration. If a randomly created instance was used, it is saved to 
+    an instance folder for later use (currently only available for MISP).
+
+    :param params: configuration that was used for running the pymhlib algorithm
+    :param graph: a networkx graph instance that was used as input for the pymhlib algorithm
+    """
     # if instance==random, create instance file from graph, save in instance folder and keep filename
     inst_filename = params.instance
     if inst_filename.startswith('random'):
@@ -280,6 +342,11 @@ def save_visualisation(params: Configuration, graph=None):
 
 
 def save_misp_instance(graph):
+    """ Saves the given networkx graph as instance file to be used as input for MISPs.
+
+    :param graph: a networkx graph instance
+    :return: the name of the file the instance was saved to
+    """
     filename = '_'.join(['gnm', str(graph.order()), str(graph.size()), time.strftime('%Y%m%d%H%M%S')]) + '.mis'
     pathname = 'instances' + os.path.sep + filename
     with open(pathname, 'w') as inst_file:
@@ -291,6 +358,12 @@ def save_misp_instance(graph):
 
 
 def read_from_logfile(filename: str):
+    """ Reads log data from the given file name, prepares the data for step-by-step visualisation and 
+    creates an Instance object from the information in the log file.
+
+    :param filename: name of the log file to be read
+    :return: a list holding the visualisation data and the problem instance object
+    """
     data = list()
     instance_file = ''
     probl = ''
@@ -321,6 +394,11 @@ def read_from_logfile(filename: str):
     return vis_data, inst
 
 def get_log_description(filename: str):
+    """ Read the textual description from the beginning of the given file.
+
+    :param filename: name of the file to be read
+    :return: desription of the log file as multi-line string
+    """
     if not filename:
         return ''
     description = []
@@ -337,21 +415,44 @@ def get_log_description(filename: str):
 
 
 class RunData():
+    """ Class for storing data of multiple algorithm runs of different configurations.
+    Provides methods for plotting the selected data.
+
+    Attributes:
+    - summaries: dictionary, keys=names of the configurations, values=pandas data frames of the summary statistics
+    - iteration_df: pandas data frame of the iteration data (objective values) of all runs currently available
+    """
 
     def __init__(self):
+        """ Initialization.
+        """
         self.summaries = dict()
         self.iteration_df = pd.DataFrame()
 
     def reset(self):
+        """ Removes currently stored data.
+        """
         self.summaries = dict()
         self.iteration_df = pd.DataFrame()
 
     def get_stat_options(self):
+        """ Reads available summary statistic categories from the summaries data frame.
+
+        :return: tuple of available summary statistics
+        """
         if len(self.summaries) == 0:
             return tuple()
         return tuple(list(self.summaries.values())[0].columns)
 
     def save_to_logfile(self, config: Configuration, filepath: str, description: str=None, append: bool=False):
+        """ Saves all runs of the given configuration that have not yet been saved to a data file.
+        If runs are appended to a file, the number of runs in the file description and the file name is increased accordingly.
+
+        :param config: configuration containing information about what runs should be saved.
+        :param filepath: file name the runs should be saved to
+        :param description: if the file already exists, the parameter holds the description of the file, else its None
+        :param append: True if the runs are to be appended to a file, False if any existing file is to be overwritten
+        """
         mode = 'w' if description else 'r+'
         f = open(filepath, mode)
 
@@ -409,27 +510,33 @@ class RunData():
 
 
     def load_datafile(self,filename,runs: int):
-            f = open(filename, 'r')
-            pos = 0
-            while True:
-                    l = f.readline()
-                    if not l[0] in ['D','R']:
-                            break
-                    pos = f.tell()
-            f.seek(pos)
-            data = pd.read_csv(f, sep=r'\s+', nrows=runs).T
-            data.reset_index(drop=True, inplace=True)
-            data.index += 1
-            f.seek(pos)
-            
-            while True:
-                    l = f.readline()
-                    if l[0] == 'S':
-                            break
-            sm = pd.read_csv(f,sep=r'\s+',index_col=['run','method'])
-            sm = sm[sm.index.get_level_values('run') <= runs]
-            f.close()
+        """ Loads the given number of runs from the given file.
 
-            return data,sm     
+        :param filename: name of the file from which runs are to be loaded
+        :param runs: number of runs that are to be loaded
+        :return: a tuple holding iteration data (objective values) and summary statistics of the requested runs
+        """
+        f = open(filename, 'r')
+        pos = 0
+        while True:
+                l = f.readline()
+                if not l[0] in ['D','R']:
+                        break
+                pos = f.tell()
+        f.seek(pos)
+        data = pd.read_csv(f, sep=r'\s+', nrows=runs).T
+        data.reset_index(drop=True, inplace=True)
+        data.index += 1
+        f.seek(pos)
+        
+        while True:
+                l = f.readline()
+                if l[0] == 'S':
+                        break
+        sm = pd.read_csv(f,sep=r'\s+',index_col=['run','method'])
+        sm = sm[sm.index.get_level_values('run') <= runs]
+        f.close()
+
+        return data,sm     
       
 
